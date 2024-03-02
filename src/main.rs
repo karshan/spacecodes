@@ -1,7 +1,12 @@
 use raylib::prelude::*;
 
 fn move_(pos: Vector2, target: Vector2, speed: f32) -> Vector2 {
-    return pos + ((target - pos).normalized().scale_by(speed));
+    let delta = target - pos;
+    if delta.length_sqr() < speed * speed { 
+        target
+    } else { 
+        pos + delta.normalized().scale_by(speed)
+    }
 }
 
 fn main() {
