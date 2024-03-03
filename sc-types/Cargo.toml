@@ -1,5 +1,5 @@
 [package]
-name = "sc-client"
+name = "sc-types"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,4 +7,3 @@ edition = "2021"
 
 [dependencies]
 raylib = "3.7.0"
-sc-types = { path = "../sc-types" }

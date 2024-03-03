@@ -1,2 +1,2 @@
 [workspace]
-members = ["sc-client", "sc-server"]
+members = ["sc-client", "sc-server", "sc-types"]

@@ -589,6 +589,7 @@ name = "sc-client"
 version = "0.1.0"
 dependencies = [
  "raylib",
+ "sc-types",
 ]
 
 [[package]]
@@ -596,6 +597,15 @@ name = "sc-server"
 version = "0.1.0"
 dependencies = [
  "async-std",
+ "raylib",
+ "sc-types",
+]
+
+[[package]]
+name = "sc-types"
+version = "0.1.0"
+dependencies = [
+ "raylib",
 ]
 
 [[package]]
