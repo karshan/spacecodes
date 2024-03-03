@@ -1,5 +1,6 @@
 use raylib::prelude::Vector2;
 
+#[derive(Default)]
 #[derive(Clone)]
 pub struct GameState {
     pub pos: [Vector2; 2],

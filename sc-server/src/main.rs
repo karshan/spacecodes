@@ -47,9 +47,7 @@ fn main() -> io::Result<()> {
                                 }
                             }
                         },
-                        ServerState::Waiting => {
-
-                        }
+                        ServerState::Waiting => {}
                     }
                 }
             }
