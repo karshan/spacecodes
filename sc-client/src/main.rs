@@ -1,3 +1,4 @@
+use std::hash::DefaultHasher;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
 use std::fmt;
@@ -24,7 +25,6 @@ impl fmt::Display for ClientState {
         }
     }
 }
-
 
 fn move_(pos: Vector2, target: Vector2, speed: f32) -> Vector2 {
     let delta = target - pos;
@@ -59,15 +59,17 @@ fn main() -> std::io::Result<()> {
 
     let mut state = ClientState::SendHello;
     let mut latency = 0_f64;
-    let mut game_state = Default::default();
+    let mut game_state: GameState = Default::default();
     let mut p_id = 0;
+    let mut seq_state: SeqState = Default::default();
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
 
     while !rl.window_should_close() {
         state = match state {
             ClientState::SendHello => {
-                socket_send(&socket, &server[0], &ClientPkt::Hello { seq: 0, sent_time: rl.get_time() })?;
+                socket_send(&socket, &server[0], &ClientPkt::Hello { seq: seq_state.send_seq, sent_time: rl.get_time() })?;
+                seq_state = seq_state.send();
                 ClientState::ExpectWelcome
             },
             ClientState::ExpectWelcome => {
@@ -75,6 +77,7 @@ fn main() -> std::io::Result<()> {
                 match resp {
                     None => ClientState::ExpectWelcome,
                     Some(ServerPkt::Welcome { seq, ack, handshake_start_time, player_id }) => {
+                        seq_state = seq_state.recv(seq, ack);
                         latency = rl.get_time() - handshake_start_time;
                         p_id = player_id;
                         ClientState::Waiting
@@ -89,6 +92,7 @@ fn main() -> std::io::Result<()> {
                 match resp {
                     None => ClientState::Waiting,
                     Some(ServerPkt::Start { seq, ack, state }) => {
+                        seq_state = seq_state.recv(seq, ack);
                         game_state = state;
                         ClientState::Started
                     },
@@ -105,6 +109,7 @@ fn main() -> std::io::Result<()> {
                 match resp {
                     None => {},
                     Some(ServerPkt::UpdateOtherTarget { seq, ack, other_target, frame }) => {
+                        seq_state = seq_state.recv(seq, ack);
                         o_tgt = Some(other_target);
                     },
                     Some(_) => {
@@ -114,7 +119,8 @@ fn main() -> std::io::Result<()> {
 
                 if rl.is_mouse_button_released(MouseButton::MOUSE_LEFT_BUTTON) {
                     game_state.target[p_id] = rl.get_mouse_position();
-                    socket_send(&socket, &server[0], &ClientPkt::Target { seq: 0, ack: 0, target: game_state.target[p_id] })?;
+                    socket_send(&socket, &server[0], &ClientPkt::Target { seq: seq_state.send_seq, ack: seq_state.send_ack, target: game_state.target[p_id] })?;
+                    seq_state = seq_state.send();
                 }
 
                 match o_tgt {
@@ -141,6 +147,7 @@ fn main() -> std::io::Result<()> {
 
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
         d.draw_text(&((latency * 1000_f64).round() as i64).to_string(), 20, 40, 20, Color::BLACK);
+        d.draw_text(&p_id.to_string(), 20, 60, 20, Color::BLACK);
     }
     Ok(())
 }
