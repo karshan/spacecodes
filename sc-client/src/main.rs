@@ -1,4 +1,3 @@
-use std::hash::DefaultHasher;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
 use std::fmt;
@@ -26,16 +25,19 @@ impl fmt::Display for ClientState {
     }
 }
 
-fn move_(pos: Vector2, target: Vector2, speed: f32) -> Vector2 {
+fn move_(pos: Vector2, target: Vector2, speed: f32, delta_time: f32) -> Vector2 {
     let delta = target - pos;
-    if delta.length_sqr() < speed * speed { 
+    let eff_speed = speed * delta_time;
+    if delta.length_sqr() < eff_speed * eff_speed { 
         target
     } else { 
-        pos + delta.normalized().scale_by(speed)
+        pos + delta.normalized().scale_by(eff_speed)
     }
 }
 
 fn main() -> std::io::Result<()> {
+    let frame_rate = 60;
+
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         println!("Usage {} server_addr", args[0]);
@@ -55,30 +57,33 @@ fn main() -> std::io::Result<()> {
         .size(640, 480)
         .title("Space Codes")
         .build();
-    rl.set_target_fps(60);
+    rl.set_target_fps(frame_rate);
 
     let mut state = ClientState::SendHello;
     let mut latency = 0_f64;
     let mut game_state: GameState = Default::default();
     let mut p_id = 0;
     let mut seq_state: SeqState = Default::default();
+    let mut frame_counter: i64 = 0;
+    let mut s_time = 0f64;
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
 
     while !rl.window_should_close() {
+        let delta_time = rl.get_frame_time();
+
         state = match state {
             ClientState::SendHello => {
                 socket_send(&socket, &server[0], &ClientPkt::Hello { seq: seq_state.send_seq, sent_time: rl.get_time() })?;
-                seq_state = seq_state.send();
+                seq_state.send();
                 ClientState::ExpectWelcome
             },
             ClientState::ExpectWelcome => {
-                let resp = socket_recv(&socket, &server[0]);
+                let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
                 match resp {
                     None => ClientState::ExpectWelcome,
-                    Some(ServerPkt::Welcome { seq, ack, handshake_start_time, player_id }) => {
-                        seq_state = seq_state.recv(seq, ack);
-                        latency = rl.get_time() - handshake_start_time;
+                    Some(ServerEnum::Welcome { handshake_start_time, player_id }) => {
+                        latency = (rl.get_time() - handshake_start_time) / 2.0f64;
                         p_id = player_id;
                         ClientState::Waiting
                     },
@@ -88,12 +93,12 @@ fn main() -> std::io::Result<()> {
                 }
             },
             ClientState::Waiting => {
-                let resp = socket_recv(&socket, &server[0]);
+                let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
                 match resp {
                     None => ClientState::Waiting,
-                    Some(ServerPkt::Start { seq, ack, state }) => {
-                        seq_state = seq_state.recv(seq, ack);
+                    Some(ServerEnum::Start { state }) => {
                         game_state = state;
+                        frame_counter = 0;
                         ClientState::Started
                     },
                     Some(_) => {
@@ -105,11 +110,10 @@ fn main() -> std::io::Result<()> {
                 let mut o_tgt = None;
                 let other_id = (p_id + 1) % 2;
 
-                let resp = socket_recv(&socket, &server[0]);
+                let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
                 match resp {
                     None => {},
-                    Some(ServerPkt::UpdateOtherTarget { seq, ack, other_target, frame }) => {
-                        seq_state = seq_state.recv(seq, ack);
+                    Some(ServerEnum::UpdateOtherTarget { other_target, frame }) => {
                         o_tgt = Some(other_target);
                     },
                     Some(_) => {
@@ -119,8 +123,13 @@ fn main() -> std::io::Result<()> {
 
                 if rl.is_mouse_button_released(MouseButton::MOUSE_LEFT_BUTTON) {
                     game_state.target[p_id] = rl.get_mouse_position();
-                    socket_send(&socket, &server[0], &ClientPkt::Target { seq: seq_state.send_seq, ack: seq_state.send_ack, target: game_state.target[p_id] })?;
-                    seq_state = seq_state.send();
+                    socket_send(&socket, &server[0], &ClientPkt::Target { 
+                        seq: seq_state.send_seq,
+                        ack: seq_state.send_ack,
+                        target: game_state.target[p_id],
+                        frame: 0,
+                    })?;
+                    seq_state.send();
                 }
 
                 match o_tgt {
@@ -129,13 +138,14 @@ fn main() -> std::io::Result<()> {
                 };
 
                 for i in 0..2 {
-                    game_state.pos[i] = move_(game_state.pos[i], game_state.target[i], 1.0);
+                    game_state.pos[i] = move_(game_state.pos[i], game_state.target[i], 60.0, delta_time);
                 }
 
                 ClientState::Started
             }
         };
 
+        frame_counter += (delta_time / (1.0f32 / (frame_rate as f32))).round() as i64;
         let mut d = rl.begin_drawing(&thread);
 
         d.clear_background(Color::WHITE);
@@ -147,7 +157,7 @@ fn main() -> std::io::Result<()> {
 
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
         d.draw_text(&((latency * 1000_f64).round() as i64).to_string(), 20, 40, 20, Color::BLACK);
-        d.draw_text(&p_id.to_string(), 20, 60, 20, Color::BLACK);
+        d.draw_text(&frame_counter.to_string(), 20, 60, 20, Color::BLACK);
     }
     Ok(())
 }

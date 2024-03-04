@@ -1,6 +1,6 @@
 
 use std::net::{SocketAddr, UdpSocket};
-use sc_types::{ServerPkt, ClientPkt};
+use sc_types::{ClientPkt, SeqState, ServerEnum, ServerPkt};
 use std::io;
 
 unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
@@ -10,19 +10,21 @@ unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     )
 }
 
-pub fn socket_recv(socket: &UdpSocket, expected_addr: &SocketAddr) -> Option<ServerPkt> {
-    let mut buf = [0u8; 48];
+pub fn socket_recv(socket: &UdpSocket, expected_addr: &SocketAddr, seq_state: &mut SeqState, s_time: &mut f64) -> Option<ServerEnum> {
+    let mut buf = [0u8; 56];
     match socket.recv_from(&mut buf) {
         Ok((n, addr)) => {
             if addr != *expected_addr {
                 panic!("Expected server_addr: {} got {}", expected_addr, addr)
             }
-            if n != 48 {
+            if n != 56 {
                 panic!("Expected 48 bytes got {}", n)
             }
 
-            let resp: ServerPkt = unsafe { std::mem::transmute::<[u8; 48], ServerPkt>(buf) };
-            Some(resp)
+            let resp: ServerPkt = unsafe { std::mem::transmute::<[u8; 56], ServerPkt>(buf) };
+            seq_state.recv(resp.seq, resp.ack);
+            *s_time = resp.server_time;
+            Some(resp.msg)
         },
         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
             None
