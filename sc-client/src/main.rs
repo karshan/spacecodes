@@ -12,6 +12,7 @@ enum ClientState {
     ExpectWelcome,
     Waiting,
     Started,
+    Ended,
 }
 
 impl fmt::Display for ClientState {
@@ -21,6 +22,7 @@ impl fmt::Display for ClientState {
             ClientState::ExpectWelcome => write!(f, "ExpectWelcome"),
             ClientState::Waiting => write!(f, "Waiting"),
             ClientState::Started => write!(f, "Started"),
+            ClientState::Ended => write!(f, "Ended"),
         }
     }
 }
@@ -38,6 +40,7 @@ fn move_(pos: Vector2, target: Vector2, speed: f32, delta_time: f32) -> Vector2 
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let player_speed = frame_rate as f32;
+    let player_size = Vector2 { x: 10.0, y: 10.0 };
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -146,8 +149,14 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                ClientState::Started
-            }
+                if (game_state.pos[0].x - game_state.pos[1].x).abs() < player_size.x &&
+                    (game_state.pos[0].y - game_state.pos[1].y).abs() < player_size.y {
+                    ClientState::Ended
+                } else {
+                    ClientState::Started
+                }
+            },
+            ClientState::Ended => ClientState::Ended
         };
 
         if frame_offset < 2 {
@@ -160,7 +169,6 @@ fn main() -> std::io::Result<()> {
 
         d.clear_background(Color::WHITE);
 
-        let player_size = Vector2 { x: 10.0, y: 10.0 };
         for i in 0..2 {
             d.draw_rectangle_v(game_state.pos[i], player_size, if p_id == i { Color::RED } else { Color::BLACK });
         }
