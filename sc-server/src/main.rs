@@ -20,7 +20,7 @@ unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
 
 fn main() -> io::Result<()> {
     task::block_on(async {
-        let socket = UdpSocket::bind("127.0.0.1:8080").await?;
+        let socket = UdpSocket::bind("0.0.0.0:8080").await?;
         let mut buf = [0u8; 40];
         let mut conn_states = HashMap::new();
         let mut state = ServerState::Waiting;

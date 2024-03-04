@@ -39,7 +39,7 @@ fn move_(pos: Vector2, target: Vector2, speed: f32, delta_time: f32) -> Vector2 
 
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
-    let player_speed = frame_rate as f32;
+    let player_speed = [frame_rate as f32, frame_rate as f32 * 1.5f32 ];
     let player_size = Vector2 { x: 10.0, y: 10.0 };
 
     let args: Vec<String> = env::args().collect();
@@ -124,7 +124,7 @@ fn main() -> std::io::Result<()> {
 
                         // FIXME: This doesn't make sense when frame > frame_counter, aka other is in the future
                         game_state.pos[other_id] = other_pos + (other_target - other_pos).normalized()
-                            .scale_by(player_speed * ((frame_counter - frame) as f32 * (1.0f32 / frame_rate as f32)));
+                            .scale_by(player_speed[other_id] * ((frame_counter - frame) as f32 * (1.0f32 / frame_rate as f32)));
                     },
                     Some(_) => {
                         panic!("Expected UpdateOtherTarget")
@@ -145,7 +145,7 @@ fn main() -> std::io::Result<()> {
 
                 if frame_offset < 2 {
                     for i in 0..2 {
-                        game_state.pos[i] = move_(game_state.pos[i], game_state.target[i], player_speed, delta_time);
+                        game_state.pos[i] = move_(game_state.pos[i], game_state.target[i], player_speed[i], delta_time);
                     }
                 }
 
@@ -170,7 +170,7 @@ fn main() -> std::io::Result<()> {
         d.clear_background(Color::WHITE);
 
         for i in 0..2 {
-            d.draw_rectangle_v(game_state.pos[i], player_size, if p_id == i { Color::RED } else { Color::BLACK });
+            d.draw_rectangle_v(game_state.pos[i], player_size, if i == 0 { Color::RED } else { Color::BLACK });
         }
 
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
