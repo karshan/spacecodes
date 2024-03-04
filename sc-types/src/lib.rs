@@ -37,7 +37,7 @@ pub struct GameState {
 
 pub enum ClientPkt {
     Hello { seq: i32, sent_time: f64 },
-    Target { seq: i32, ack: i32, target: Vector2, frame: i64 },
+    Target { seq: i32, ack: i32, pos: Vector2, target: Vector2, frame: i64 },
 }
 
 pub struct ServerPkt {
@@ -50,5 +50,5 @@ pub struct ServerPkt {
 pub enum ServerEnum {
     Welcome { handshake_start_time: f64, player_id: usize },
     Start { state: GameState },
-    UpdateOtherTarget { other_target: Vector2, frame: i64 }
+    UpdateOtherTarget { other_pos: Vector2, other_target: Vector2, frame: i64 }
 }
