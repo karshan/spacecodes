@@ -5,7 +5,6 @@ use sc_types::*;
 use std::collections::HashMap;
 use std::time::Instant;
 use raylib::prelude::Vector2;
-use std::sync::atomic::Ordering::SeqCst;
 
 enum ServerState {
     Waiting,
@@ -44,8 +43,8 @@ fn main() -> io::Result<()> {
                     let seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
                     seq_state.recv(seq, 0);
                     let server_pkt = ServerPkt {
-                        seq: seq_state.send_seq.load(SeqCst),
-                        ack: seq_state.send_ack.load(SeqCst),
+                        seq: seq_state.send_seq,
+                        ack: seq_state.send_ack,
                         server_time: instant.elapsed().as_secs_f64(),
                         msg: ServerEnum::Welcome {
                             handshake_start_time: sent_time,
@@ -64,8 +63,8 @@ fn main() -> io::Result<()> {
                             for (send_peer, s_seq_state) in conn_states.iter_mut() {
                                 if *send_peer != peer {
                                     let server_pkt = ServerPkt {
-                                        seq: s_seq_state.send_seq.load(SeqCst),
-                                        ack: s_seq_state.send_ack.load(SeqCst),
+                                        seq: s_seq_state.send_seq,
+                                        ack: s_seq_state.send_ack,
                                         server_time: instant.elapsed().as_secs_f64(),
                                         msg: ServerEnum::UpdateOtherTarget { other_pos: pos, other_target: target, frame: frame },
                                     };
@@ -90,8 +89,8 @@ fn main() -> io::Result<()> {
                         instant = Instant::now();
                         for (peer, seq_state) in conn_states.iter_mut() {
                             let server_pkt = ServerPkt {
-                                seq: seq_state.send_seq.load(SeqCst),
-                                ack: seq_state.send_ack.load(SeqCst),
+                                seq: seq_state.send_seq,
+                                ack: seq_state.send_ack,
                                 server_time: instant.elapsed().as_secs_f64(),
                                 msg: ServerEnum::Start { state: gs.clone() },
                             };

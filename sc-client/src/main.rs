@@ -3,7 +3,6 @@ use std::env;
 use std::fmt;
 use raylib::prelude::*;
 use sc_types::*;
-use std::sync::atomic::Ordering::SeqCst;
 
 mod util;
 use util::*;
@@ -80,7 +79,7 @@ fn main() -> std::io::Result<()> {
 
         state = match state {
             ClientState::SendHello => {
-                socket_send(&socket, &server[0], &ClientPkt::Hello { seq: seq_state.send_seq.load(SeqCst), sent_time: rl.get_time() })?;
+                socket_send(&socket, &server[0], &ClientPkt::Hello { seq: seq_state.send_seq, sent_time: rl.get_time() })?;
                 seq_state.send();
                 ClientState::ExpectWelcome
             },
@@ -135,8 +134,8 @@ fn main() -> std::io::Result<()> {
                 if rl.is_mouse_button_released(MouseButton::MOUSE_LEFT_BUTTON) {
                     game_state.target[p_id] = rl.get_mouse_position();
                     socket_send(&socket, &server[0], &ClientPkt::Target { 
-                        seq: seq_state.send_seq.load(SeqCst),
-                        ack: seq_state.send_ack.load(SeqCst),
+                        seq: seq_state.send_seq,
+                        ack: seq_state.send_ack,
                         pos: game_state.pos[p_id],
                         target: game_state.target[p_id],
                         frame: frame_counter,
