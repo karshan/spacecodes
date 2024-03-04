@@ -10,7 +10,7 @@ pub struct SeqState {
 
 impl SeqState {
     pub fn recv(&mut self, seq: i32, ack: i32) {
-        if ack != self.expected_ack {
+        if ack > self.expected_ack {
             panic!("Expected ack {} got {}", self.expected_ack, ack)
         }
 
