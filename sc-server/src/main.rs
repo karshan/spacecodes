@@ -8,7 +8,7 @@ use raylib::prelude::Vector2;
 
 enum ServerState {
     Waiting,
-    Started(GameState)
+    Started,
 }
 
 unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
@@ -21,7 +21,7 @@ unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
 fn main() -> io::Result<()> {
     task::block_on(async {
         let socket = UdpSocket::bind("0.0.0.0:8080").await?;
-        let mut buf = [0u8; 40];
+        let mut buf = [0u8; 176];
         let mut conn_states = HashMap::new();
         let mut state = ServerState::Waiting;
         let mut instant = Instant::now();
@@ -30,16 +30,16 @@ fn main() -> io::Result<()> {
 
         loop {
             let (n, peer) = socket.recv_from(&mut buf).await?;
-            if n != 40 {
-                panic!("Expected 40 bytes got {}", n)
+            if n != 176 {
+                panic!("Expected 176 bytes got {}", n)
             }
 
-            let req: ClientPkt = unsafe { std::mem::transmute::<[u8; 40], ClientPkt>(buf) };
+            let req: ClientPkt = unsafe { std::mem::transmute::<[u8; 176], ClientPkt>(buf) };
             conn_states.entry(peer).or_default();
 
             match req {
                 ClientPkt::Hello { seq, sent_time } => {
-                    let p_id = conn_states.len() - 1;
+                    let p_id = (conn_states.len() - 1) as u8;
                     let seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
                     seq_state.recv(seq, 0);
                     let server_pkt = ServerPkt {
@@ -55,18 +55,18 @@ fn main() -> io::Result<()> {
                     socket.send_to(to_send, peer).await?;
                     seq_state.send();
                 },
-                ClientPkt::Target { seq, ack, pos, target, frame } => {
+                ClientPkt::Target { seq, ack, updates, frame } => {
                     let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
                     r_seq_state.recv(seq, ack);
                     match state {
-                        ServerState::Started(_) => {
+                        ServerState::Started => {
                             for (send_peer, s_seq_state) in conn_states.iter_mut() {
                                 if *send_peer != peer {
                                     let server_pkt = ServerPkt {
                                         seq: s_seq_state.send_seq,
                                         ack: s_seq_state.send_ack,
                                         server_time: instant.elapsed().as_secs_f64(),
-                                        msg: ServerEnum::UpdateOtherTarget { other_pos: pos, other_target: target, frame: frame },
+                                        msg: ServerEnum::UpdateOtherTarget { updates, frame: frame },
                                     };
                                     let to_send = unsafe { any_as_u8_slice(&server_pkt) };
                                     socket.send_to(to_send, send_peer).await?;
@@ -82,23 +82,19 @@ fn main() -> io::Result<()> {
             match state {
                 ServerState::Waiting => {
                     if conn_states.len() >= 2 {
-                        let gs = GameState {
-                            pos: [Vector2 { x: 0.0, y: 0.0 }, Vector2 { x: 100.0, y: 0.0 }],
-                            target: [Vector2 { x: 0., y: 0.0 }, Vector2 { x: 100.0, y: 0.0 }],
-                        };
                         instant = Instant::now();
                         for (peer, seq_state) in conn_states.iter_mut() {
                             let server_pkt = ServerPkt {
                                 seq: seq_state.send_seq,
                                 ack: seq_state.send_ack,
                                 server_time: instant.elapsed().as_secs_f64(),
-                                msg: ServerEnum::Start { state: gs.clone() },
+                                msg: ServerEnum::Start,
                             };
                             let to_send = unsafe { any_as_u8_slice(&server_pkt) };
                             socket.send_to(to_send, peer).await?;
                             seq_state.send();
                         }
-                        state = ServerState::Started(gs)
+                        state = ServerState::Started
                     }
                 }
                 _ => {}

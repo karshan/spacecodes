@@ -28,16 +28,45 @@ impl SeqState {
     }
 }
 
-#[derive(Default)]
 #[derive(Clone)]
+
 pub struct GameState {
-    pub pos: [Vector2; 2],
-    pub target: [Vector2; 2],
+    pub my_units: [Option<(UnitEnum, Unit)>; 10],
+    pub other_units: [Option<(UnitEnum, Unit)>; 10],
+    pub selection: u8,
+}
+
+#[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
+pub enum Dir {
+    Up,
+    Down,
+    Left,
+    Right,
+    Stop
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Unit {
+    pub player_id: u8,
+    pub pos: Vector2,
+    pub dir: Dir,
+}
+
+#[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
+pub enum UnitEnum {
+    MessageBox,
+    Interceptor
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum GameCommand {
+    Move(u8, Dir),
+    Spawn(u8, UnitEnum, Unit)
 }
 
 pub enum ClientPkt {
     Hello { seq: i32, sent_time: f64 },
-    Target { seq: i32, ack: i32, pos: Vector2, target: Vector2, frame: i64 },
+    Target { seq: i32, ack: i32, updates: [GameCommand; 10], frame: i64 },
 }
 
 pub struct ServerPkt {
@@ -48,7 +77,7 @@ pub struct ServerPkt {
 }
 
 pub enum ServerEnum {
-    Welcome { handshake_start_time: f64, player_id: usize },
-    Start { state: GameState },
-    UpdateOtherTarget { other_pos: Vector2, other_target: Vector2, frame: i64 }
+    Welcome { handshake_start_time: f64, player_id: u8 },
+    Start,
+    UpdateOtherTarget { updates: [GameCommand; 10], frame: i64 }
 }
