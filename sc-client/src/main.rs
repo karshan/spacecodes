@@ -35,7 +35,7 @@ fn move_(pos: Vector2, target: Vector2, speed: f32) -> Vector2 {
 }
 
 fn main() -> std::io::Result<()> {
-    let frame_rate = 15;
+    let frame_rate = 60;
     let player_speed = [ 5.0f32, 8f32 ];
     let player_size = Vector2 { x: 10.0, y: 10.0 };
 
@@ -54,6 +54,7 @@ fn main() -> std::io::Result<()> {
         panic!("unable to resolve server?")
     }
 
+    set_trace_log(TraceLogLevel::LOG_ERROR);
     let (mut rl, thread) = raylib::init()
         .size(640, 480)
         .title("Space Codes")
@@ -111,15 +112,17 @@ fn main() -> std::io::Result<()> {
             ClientState::Started(ended) => {
                 let other_id = (p_id + 1) % 2;
 
-                let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
-                match resp {
-                    None => {},
-                    Some(ServerEnum::UpdateOtherTarget { other_pos, other_target, frame }) => {
-                        game_state.target[other_id] = other_target;
-                        go = true;
-                    },
-                    Some(_) => {
-                        panic!("Expected UpdateOtherTarget")
+                if frame_counter % 2 == 0 {
+                    let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
+                    match resp {
+                        None => {},
+                        Some(ServerEnum::UpdateOtherTarget { other_pos, other_target, frame }) => {
+                            game_state.target[other_id] = other_target;
+                            go = true;
+                        },
+                        Some(_) => {
+                            panic!("Expected UpdateOtherTarget")
+                        }
                     }
                 }
 
@@ -127,7 +130,7 @@ fn main() -> std::io::Result<()> {
                     unsent_target = rl.get_mouse_position();
                 }
 
-                if sent_frame <= frame_counter {
+                if sent_frame <= frame_counter && (frame_counter % 2 == 0) {
                     socket_send(&socket, &server[0], &ClientPkt::Target { 
                         seq: seq_state.send_seq,
                         ack: seq_state.send_ack,
@@ -138,10 +141,10 @@ fn main() -> std::io::Result<()> {
                     seq_state.send();
 
                     game_state.target[p_id] = unsent_target;
-                    sent_frame += 1;
+                    sent_frame += 2;
                 }
 
-                if go && !ended {
+                if (go || (frame_counter % 2 == 1)) && !ended {
                     for i in 0..2 {
                         game_state.pos[i] = move_(game_state.pos[i], game_state.target[i], player_speed[i]);
                     }
