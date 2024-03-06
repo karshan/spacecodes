@@ -310,6 +310,9 @@ fn main() -> std::io::Result<()> {
             match game_state.my_units[i] {
                 Some((t, u)) => {
                     d.draw_rectangle_v(u.pos, unit_size[&t], player_colors[&t]);
+                    if game_state.selection == i as u8 {
+                        d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, unit_size[&t].x.round() as i32 + 1, unit_size[&t].y.round() as i32 + 1, Color::BLACK)
+                    }
                 },
                 None => {}
             } 
