@@ -38,6 +38,7 @@ pub struct GameState {
     pub my_units: Vec<(UnitEnum, Unit)>,
     pub other_units: Vec<(UnitEnum, Unit)>,
     pub selection: usize,
+    pub fuel: [i32; 2],
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]

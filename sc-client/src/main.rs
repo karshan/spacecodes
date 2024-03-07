@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::cmp::min;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
 use std::fmt;
@@ -25,6 +26,9 @@ enum AreaEnum {
     Blocked
 }
 
+static START_FUEL: i32 = 1800;
+static FUEL_LOSS: i32 = 1; // per frame
+static MSG_FUEL: i32 = 600;
 static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
     (AreaEnum::Blocked, Rect {
         x: 328, y: 200,
@@ -66,6 +70,12 @@ impl fmt::Display for ClientState {
     }
 }
 
+// FIXME use unit_size
+fn unit_rect(u: Unit) -> Rect<i32> {
+    Rect { x: u.pos.x.round() as i32, y: u.pos.y.round() as i32, w: 20, h: 20 }
+}
+
+
 fn move_(unit: Unit, speed: f32) -> Vector2 {
     let dir_vec = HashMap::from([
         (Dir::Up, Vector2 { x: 0.0f32, y: -1.0f32 }),
@@ -75,7 +85,7 @@ fn move_(unit: Unit, speed: f32) -> Vector2 {
         (Dir::Stop, Vector2::zero()),
     ]);
     let new_pos = unit.pos + dir_vec[&unit.dir].scale_by(speed);
-    let unit_rect = Rect { x: new_pos.x.round() as i32, y: new_pos.y.round() as i32, w: 20, h: 20 };
+    let ur = Rect { x: new_pos.x.round() as i32, y: new_pos.y.round() as i32, w: 20, h: 20 };
     let play_area = Rect { x: 0, y: 0, w: 1024, h: 768 };
     let mut is_safe = false;
     let mut is_blocked = false;
@@ -87,14 +97,14 @@ fn move_(unit: Unit, speed: f32) -> Vector2 {
             AreaEnum::P1Station => unit.player_id == 1,
             _ => false
         };
-        if safe_area && collide_rect(&r, &unit_rect) {
+        if safe_area && collide_rect(&r, &ur) {
             is_safe = true;
         }
-        if *t == AreaEnum::Blocked && collide_rect(&r, &unit_rect) {
+        if *t == AreaEnum::Blocked && collide_rect(&r, &ur) {
             is_blocked = true;
         }
     }
-    if !contain_rect(&play_area, &unit_rect) || (!is_safe && is_blocked) {
+    if !contain_rect(&play_area, &ur) || (!is_safe && is_blocked) {
         unit.pos
     } else {
         new_pos
@@ -113,6 +123,26 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand]) {
             },
         }
     }
+}
+
+fn add_fuel(game_state: &mut GameState, p_id: usize) {
+    let other_id = (p_id + 1) % 2;
+
+    // FIXME Lookup PxStation in GAME_MAP not hardcoded index
+    let my_station = &GAME_MAP[2 + p_id * 2].1;
+    let f = |(t, u): &(UnitEnum, Unit)| match t {
+        UnitEnum::MessageBox => !collide_rect(&unit_rect(*u), my_station),
+        _ => true
+    };
+
+    let num_my_units = game_state.my_units.len() as i32;
+    let num_other_units = game_state.other_units.len() as i32;
+
+    game_state.my_units.retain(f);
+    game_state.other_units.retain(f);
+
+    game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
+    game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
 }
 
 fn tab(game_state: &mut GameState) {
@@ -211,7 +241,7 @@ fn main() -> std::io::Result<()> {
     rl.set_target_fps(frame_rate);
 
     let mut state = ClientState::SendHello;
-    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: 0 };
+    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: 0, fuel: [START_FUEL; 2] };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i64 = 0;
@@ -313,11 +343,16 @@ fn main() -> std::io::Result<()> {
                 if (go || (frame_counter % 2 == 1)) && !ended {
                     move_units(&mut game_state.my_units, &unit_speeds);
                     move_units(&mut game_state.other_units, &unit_speeds);
+                    add_fuel(&mut game_state, p_id);
+                    game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
                     frame_counter += 1;
                 }
 
-                // todo!("Collision Detection") and out of arena detection
-                ClientState::Started(false)
+                if game_state.fuel.iter().any(|f| *f < 0) {
+                    ClientState::Started(true)
+                } else {
+                    ClientState::Started(false)
+                }
             },
         };
 
@@ -327,8 +362,8 @@ fn main() -> std::io::Result<()> {
 
         for (t, r) in &GAME_MAP {
             match t {
-                AreaEnum::P0Station => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),
-                AreaEnum::P1Station => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),
+                AreaEnum::P0Station => d.draw_rectangle(r.x, r.y, r.w, (r.h * game_state.fuel[0])/START_FUEL, area_colors[&t]),
+                AreaEnum::P1Station => d.draw_rectangle(r.x + (r.w * (START_FUEL - game_state.fuel[1]))/START_FUEL, r.y, (r.w * game_state.fuel[1])/START_FUEL, r.h, area_colors[&t]),
                 AreaEnum::Blocked => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),
                 _ => d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]),
             }
