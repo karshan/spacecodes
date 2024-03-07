@@ -41,15 +41,6 @@ pub struct GameState {
     pub fuel: [i32; 2],
 }
 
-#[derive(Hash, Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
-pub enum Dir {
-    Up,
-    Down,
-    Left,
-    Right,
-    Stop
-}
-
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Vector2")]
 struct Vector2Def {
@@ -62,7 +53,8 @@ pub struct Unit {
     pub player_id: usize,
     #[serde(with = "Vector2Def")]
     pub pos: Vector2,
-    pub dir: Dir,
+    #[serde(with = "Vector2Def")]
+    pub target: Vector2,
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
@@ -73,8 +65,15 @@ pub enum UnitEnum {
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub struct MoveCommand {
+    pub u_id: usize,
+    #[serde(with = "Vector2Def")]
+    pub target: Vector2,
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum GameCommand {
-    Move(usize, Dir),
+    Move(MoveCommand),
     Spawn(UnitEnum, Unit),
     #[serde(with = "Vector2Def")]
     Intercept(Vector2),

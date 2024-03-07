@@ -78,14 +78,11 @@ fn unit_rect(u: Unit) -> Rect<i32> {
 
 
 fn move_(unit: Unit, speed: f32) -> Vector2 {
-    let dir_vec = HashMap::from([
-        (Dir::Up, Vector2 { x: 0.0f32, y: -1.0f32 }),
-        (Dir::Down, Vector2 { x: 0.0f32, y: 1.0f32 }),
-        (Dir::Left, Vector2 { x: -1.0f32, y: 0.0f32 }),
-        (Dir::Right, Vector2 { x: 1.0f32, y: 0.0f32 }),
-        (Dir::Stop, Vector2::zero()),
-    ]);
-    let new_pos = unit.pos + dir_vec[&unit.dir].scale_by(speed);
+    let new_pos = if (unit.target - unit.pos).length_sqr() < speed * speed {
+            unit.target
+        } else {
+            unit.pos + (unit.target - unit.pos).normalized().scale_by(speed)
+        };
     let ur = Rect { x: new_pos.x.round() as i32, y: new_pos.y.round() as i32, w: 20, h: 20 };
     let play_area = Rect { x: 0, y: 0, w: 1024, h: 768 };
     let mut is_safe = false;
@@ -116,9 +113,9 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], oth
     let mut spawn_id = None;
     for u in updates {
         match u {
-            GameCommand::Move(u_id, d) => {
+            GameCommand::Move(MoveCommand { u_id, target }) => {
                 let (t, u) = units[*u_id];
-                units[*u_id] = (t, Unit { dir: *d, ..u });
+                units[*u_id] = (t, Unit { target: *target, ..u });
             },
             GameCommand::Spawn(t, u) => {
                 spawn_id = Some(units.len());
@@ -204,7 +201,15 @@ fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vec
         collide_units(&game_state.other_units, spawn_pos[player_id as usize], unit_size[&t], unit_size).is_some() {
         None
     } else {
-        Some(GameCommand::Spawn(t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], dir: Dir::Stop }))
+        Some(GameCommand::Spawn(t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], target: spawn_pos[player_id as usize] }))
+    }
+}
+
+fn selected_unit(game_state: &GameState) -> Option<(UnitEnum, Unit)> {
+    if game_state.selection < game_state.my_units.len() {
+        Some(game_state.my_units[game_state.selection])
+    } else {
+        None
     }
 }
 
@@ -338,6 +343,10 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
+                if rl.is_mouse_button_pressed(MouseButton::MOUSE_RIGHT_BUTTON) && unsent_pkt.len() < max_input_queue {
+                    selected_unit(&game_state).map(|(t, _)| unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: game_state.selection, target: rl.get_mouse_position() - unit_size[&t].scale_by(0.5f32) })));
+                }
+
                 loop {
                     if unsent_pkt.len() >= max_input_queue {
                         break;
@@ -346,12 +355,8 @@ fn main() -> std::io::Result<()> {
                     match rl.get_key_pressed() {
                         Some(k) => {
                             match k {
-                                KeyboardKey::KEY_W => unsent_pkt.push(GameCommand::Move(game_state.selection, Dir::Up)),
-                                KeyboardKey::KEY_A => unsent_pkt.push(GameCommand::Move(game_state.selection, Dir::Left)),
-                                KeyboardKey::KEY_S => unsent_pkt.push(GameCommand::Move(game_state.selection, Dir::Down)),
-                                KeyboardKey::KEY_D => unsent_pkt.push(GameCommand::Move(game_state.selection, Dir::Right)),
-                                KeyboardKey::KEY_H => unsent_pkt.push(GameCommand::Move(game_state.selection, Dir::Stop)),
-                                KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &msg_spawn_pos, &unit_size).map(|c| unsent_pkt.push(c)); },
+                                KeyboardKey::KEY_H => { selected_unit(&game_state).map(|(_, u)| unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: game_state.selection, target: u.pos }))); }
+                                KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &msg_spawn_pos, &unit_size).map(|c| unsent_pkt.push(c)); }
                                 KeyboardKey::KEY_I => { spawn(&game_state, p_id, UnitEnum::Interceptor, &msg_spawn_pos, &unit_size).map(|c| unsent_pkt.push(c)); },
                                 KeyboardKey::KEY_O => { spawn(&game_state, p_id, UnitEnum::Interceptor, &int_spawn_pos, &unit_size).map(|c| unsent_pkt.push(c)); },
                                 KeyboardKey::KEY_TAB => tab(&mut game_state),
