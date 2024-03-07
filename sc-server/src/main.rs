@@ -33,7 +33,7 @@ fn main() -> io::Result<()> {
 
             match req {
                 ClientPkt::Hello { seq, sent_time } => {
-                    let p_id = (conn_states.len() - 1) as u8;
+                    let p_id = conn_states.len() - 1;
                     let seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
                     seq_state.recv(seq, 0);
                     let server_pkt = ServerPkt {

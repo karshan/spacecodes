@@ -631,6 +631,7 @@ dependencies = [
 name = "sc-client"
 version = "0.1.0"
 dependencies = [
+ "num-traits",
  "raylib",
  "rmp-serde",
  "sc-types",

@@ -58,7 +58,7 @@ struct Vector2Def {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Unit {
-    pub player_id: u8,
+    pub player_id: usize,
     #[serde(with = "Vector2Def")]
     pub pos: Vector2,
     pub dir: Dir,
@@ -92,7 +92,7 @@ pub struct ServerPkt {
 
 #[derive(Deserialize, Serialize)]
 pub enum ServerEnum {
-    Welcome { handshake_start_time: f64, player_id: u8 },
+    Welcome { handshake_start_time: f64, player_id: usize },
     Start,
     UpdateOtherTarget { updates: Vec<GameCommand>, frame: i64 }
 }
