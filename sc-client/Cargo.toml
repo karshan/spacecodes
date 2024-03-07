@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 raylib = "3.7.0"
 sc-types = { path = "../sc-types" }
+serde = "1.0.197"
+rmp-serde = "1.1.2"

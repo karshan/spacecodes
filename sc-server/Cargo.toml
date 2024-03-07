@@ -9,3 +9,4 @@ edition = "2021"
 async-std = "1.12.0"
 sc-types = { path = "../sc-types" }
 raylib = "3.7.0"
+rmp-serde = "1.1.2"

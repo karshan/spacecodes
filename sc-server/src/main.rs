@@ -11,17 +11,10 @@ enum ServerState {
     Started,
 }
 
-unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-    ::core::slice::from_raw_parts(
-        (p as *const T) as *const u8,
-        ::core::mem::size_of::<T>(),
-    )
-}
-
 fn main() -> io::Result<()> {
     task::block_on(async {
         let socket = UdpSocket::bind("0.0.0.0:8080").await?;
-        let mut buf = [0u8; 176];
+        let mut buf = [0u8; 1024];
         let mut conn_states = HashMap::new();
         let mut state = ServerState::Waiting;
         let mut instant = Instant::now();
@@ -30,11 +23,13 @@ fn main() -> io::Result<()> {
 
         loop {
             let (n, peer) = socket.recv_from(&mut buf).await?;
-            if n != 176 {
-                panic!("Expected 176 bytes got {}", n)
-            }
 
-            let req: ClientPkt = unsafe { std::mem::transmute::<[u8; 176], ClientPkt>(buf) };
+            let req = match rmp_serde::decode::from_slice::<ClientPkt>(&buf[..n]) {
+                Ok(pkt) => {
+                    pkt
+                },
+                Err(e) => panic!("{:?}", e)
+            };
             conn_states.entry(peer).or_default();
 
             match req {
@@ -51,9 +46,13 @@ fn main() -> io::Result<()> {
                             player_id: p_id
                         }
                     };
-                    let to_send = unsafe { any_as_u8_slice(&server_pkt) };
-                    socket.send_to(to_send, peer).await?;
-                    seq_state.send();
+                    match  rmp_serde::encode::to_vec(&server_pkt) {
+                        Ok(buf) => {
+                            socket.send_to(&buf, peer).await?;
+                            seq_state.send();
+                        }
+                        Err(e) => panic!("{:?}", e),
+                    }
                 },
                 ClientPkt::Target { seq, ack, updates, frame } => {
                     let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
@@ -68,9 +67,13 @@ fn main() -> io::Result<()> {
                                         server_time: instant.elapsed().as_secs_f64(),
                                         msg: ServerEnum::UpdateOtherTarget { updates, frame: frame },
                                     };
-                                    let to_send = unsafe { any_as_u8_slice(&server_pkt) };
-                                    socket.send_to(to_send, send_peer).await?;
-                                    s_seq_state.send();
+                                    match  rmp_serde::encode::to_vec(&server_pkt) {
+                                        Ok(buf) => {
+                                            socket.send_to(&buf, send_peer).await?;
+                                            s_seq_state.send();
+                                        }
+                                        Err(e) => panic!("{:?}", e),
+                                    }
                                 }
                             }
                         },
@@ -90,9 +93,13 @@ fn main() -> io::Result<()> {
                                 server_time: instant.elapsed().as_secs_f64(),
                                 msg: ServerEnum::Start,
                             };
-                            let to_send = unsafe { any_as_u8_slice(&server_pkt) };
-                            socket.send_to(to_send, peer).await?;
-                            seq_state.send();
+                            match  rmp_serde::encode::to_vec(&server_pkt) {
+                                Ok(buf) => {
+                                    socket.send_to(&buf, peer).await?;
+                                    seq_state.send();
+                                }
+                                Err(e) => panic!("{:?}", e),
+                            }
                         }
                         state = ServerState::Started
                     }
