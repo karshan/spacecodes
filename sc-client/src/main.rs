@@ -8,6 +8,45 @@ use sc_types::*;
 mod util;
 use util::*;
 
+struct Rect {
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+}
+
+#[derive(Eq, PartialEq, Hash)]
+enum AreaEnum {
+    P0Spawn,
+    P1Spawn,
+    P0Station,
+    P1Station,
+    Blocked
+}
+
+static GAME_MAP: [(AreaEnum, Rect); 5] = [
+    (AreaEnum::Blocked, Rect {
+        x: 328, y: 200,
+        w: 368, h: 368
+    }),
+    (AreaEnum::P0Spawn, Rect {
+        x: 477, y: 200,
+        w: 70, h: 70
+    }),
+    (AreaEnum::P0Station, Rect {
+        x: 477, y: 498,
+        w: 70, h: 70
+    }),
+    (AreaEnum::P1Spawn, Rect {
+        x: 626, y: 349,
+        w: 70, h: 70
+    }),
+    (AreaEnum::P1Station, Rect {
+        x: 328, y: 349,
+        w: 70, h: 70
+    }),
+];
+
 enum ClientState {
     SendHello,
     ExpectWelcome,
@@ -93,18 +132,25 @@ fn main() -> std::io::Result<()> {
         (UnitEnum::MessageBox, 1.0f32)
     ]);
     let unit_size = HashMap::from([
-        (UnitEnum::Interceptor, Vector2 { x: 10.0, y: 10.0 }),
-        (UnitEnum::MessageBox, Vector2 { x: 10.0, y: 10.0 })
+        (UnitEnum::Interceptor, Vector2 { x: 20.0, y: 20.0 }),
+        (UnitEnum::MessageBox, Vector2 { x: 20.0, y: 20.0 })
     ]);
-    let player_colors = HashMap::from([
+    let p0_colors = HashMap::from([
         (UnitEnum::Interceptor, Color::DARKPURPLE),
-        (UnitEnum::MessageBox, Color::BLUE),
+        (UnitEnum::MessageBox, Color::from_hex("90E0EF").unwrap()),
     ]);
-    let enemy_colors = HashMap::from([
+    let p1_colors = HashMap::from([
         (UnitEnum::Interceptor, Color::ORANGE),
-        (UnitEnum::MessageBox, Color::RED),
+        (UnitEnum::MessageBox, Color::from_hex("74C69D").unwrap()),
     ]);
-    let spawn_pos = [Vector2 { x: 0.0f32, y: 0.0f32 }, Vector2 { x: 600.0f32, y: 440.0f32 }];
+    let area_colors = HashMap::from([
+        (AreaEnum::P0Spawn, Color::from_hex("0077B6").unwrap()),
+        (AreaEnum::P0Station, Color::from_hex("0077B6").unwrap()),
+        (AreaEnum::P1Spawn, Color::from_hex("1B4332").unwrap()),
+        (AreaEnum::P1Station, Color::from_hex("1B4332").unwrap()),
+        (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
+    ]);
+    let spawn_pos = [Vector2 { x: 502f32, y: 250f32 }, Vector2 { x: 626f32, y: 374f32 }];
 
 
     let args: Vec<String> = env::args().collect();
@@ -124,7 +170,7 @@ fn main() -> std::io::Result<()> {
 
     set_trace_log(TraceLogLevel::LOG_ERROR);
     let (mut rl, thread) = raylib::init()
-        .size(640, 480)
+        .size(1024, 768)
         .title("Space Codes")
         .build();
     rl.set_target_fps(frame_rate);
@@ -242,15 +288,26 @@ fn main() -> std::io::Result<()> {
 
         d.clear_background(Color::WHITE);
 
+        for (t, r) in &GAME_MAP {
+            match t {
+                AreaEnum::P0Station => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),
+                AreaEnum::P1Station => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),
+                AreaEnum::Blocked => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),
+                _ => d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]),
+            }
+        }
+
         for (i, (t, u)) in game_state.my_units.iter().enumerate() {
-            d.draw_rectangle_v(u.pos, unit_size[&t], player_colors[&t]);
+            let c = if p_id == 0 { p0_colors[&t] } else { p1_colors[&t] };
+            d.draw_rectangle_v(u.pos, unit_size[&t], c);
             if game_state.selection == i {
                 d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, unit_size[&t].x.round() as i32 + 1, unit_size[&t].y.round() as i32 + 1, Color::BLACK)
             }
         }
 
         for (t, u) in game_state.other_units.iter() {
-            d.draw_rectangle_v(u.pos, unit_size[&t], enemy_colors[&t]);
+            let c = if p_id == 0 { p1_colors[&t] } else { p0_colors[&t] };
+            d.draw_rectangle_v(u.pos, unit_size[&t], c);
         }
 
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
