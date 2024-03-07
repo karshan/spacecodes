@@ -4,7 +4,6 @@ use async_std::task;
 use sc_types::*;
 use std::collections::HashMap;
 use std::time::Instant;
-use raylib::prelude::Vector2;
 
 enum ServerState {
     Waiting,
@@ -65,7 +64,7 @@ fn main() -> io::Result<()> {
                                         seq: s_seq_state.send_seq,
                                         ack: s_seq_state.send_ack,
                                         server_time: instant.elapsed().as_secs_f64(),
-                                        msg: ServerEnum::UpdateOtherTarget { updates, frame: frame },
+                                        msg: ServerEnum::UpdateOtherTarget { updates: updates.clone(), frame: frame },
                                     };
                                     match  rmp_serde::encode::to_vec(&server_pkt) {
                                         Ok(buf) => {

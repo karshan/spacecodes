@@ -1,8 +1,5 @@
 extern crate rmp_serde as rmps;
 
-use serde::{Deserialize, Serialize};
-use rmps::{Deserializer, Serializer};
-
 use std::net::{SocketAddr, UdpSocket};
 use sc_types::{ClientPkt, SeqState, ServerEnum, ServerPkt};
 use std::io;

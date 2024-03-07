@@ -35,9 +35,9 @@ impl SeqState {
 
 #[derive(Clone)]
 pub struct GameState {
-    pub my_units: [Option<(UnitEnum, Unit)>; 10],
-    pub other_units: [Option<(UnitEnum, Unit)>; 10],
-    pub selection: u8,
+    pub my_units: Vec<(UnitEnum, Unit)>,
+    pub other_units: Vec<(UnitEnum, Unit)>,
+    pub selection: usize,
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
@@ -72,14 +72,14 @@ pub enum UnitEnum {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum GameCommand {
-    Move(u8, Dir),
-    Spawn(u8, UnitEnum, Unit)
+    Move(usize, Dir),
+    Spawn(UnitEnum, Unit)
 }
 
 #[derive(Deserialize, Serialize)]
 pub enum ClientPkt {
     Hello { seq: i32, sent_time: f64 },
-    Target { seq: i32, ack: i32, updates: [GameCommand; 10], frame: i64 },
+    Target { seq: i32, ack: i32, updates: Vec<GameCommand>, frame: i64 },
 }
 
 #[derive(Deserialize, Serialize)]
@@ -94,5 +94,5 @@ pub struct ServerPkt {
 pub enum ServerEnum {
     Welcome { handshake_start_time: f64, player_id: u8 },
     Start,
-    UpdateOtherTarget { updates: [GameCommand; 10], frame: i64 }
+    UpdateOtherTarget { updates: Vec<GameCommand>, frame: i64 }
 }

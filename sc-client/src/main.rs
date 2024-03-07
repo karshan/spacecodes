@@ -37,111 +37,57 @@ fn move_(pos: Vector2, dir: Dir, speed: f32) -> Vector2 {
     pos + dir_vec[&dir].scale_by(speed)
 }
 
-fn apply_updates(units: &mut [Option<(UnitEnum, Unit)>], updates: &[GameCommand]) {
+fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand]) {
     for u in updates {
         match u {
             GameCommand::Move(u_id, d) => {
-                if *u_id != 255 {
-                    units[*u_id as usize] = 
-                        units[*u_id as usize].map(|(t, unit)| (t, Unit { dir: *d, ..unit }));
-                }
+                let (t, u) = units[*u_id];
+                units[*u_id] = (t, Unit { dir: *d, ..u });
             },
-            GameCommand::Spawn(u_id, t, u) => {
-                units[*u_id as usize] = Some((*t, *u))
+            GameCommand::Spawn(t, u) => {
+                units.push((*t, *u));
             },
         }
     }
-}
-
-fn next_unit_idx(start: u8, units: [Option<(UnitEnum, Unit)>; 10]) -> Option<u8> {
-    let mut i = start;
-    let mut j = 0;
-    while j < 10 {
-        match units[i as usize] {
-            Some(_) => {
-                return Some(i);
-            },
-            _ => {}
-        }
-        i = (i + 1) % 10;
-        j += 1;
-    }
-    None
-}
-
-fn next_free_idx(start: u8, units: [Option<(UnitEnum, Unit)>; 10]) -> Option<u8> {
-    let mut i = start;
-    let mut j = 0;
-    while j < 10 {
-        match units[i as usize] {
-            None => {
-                return Some(i);
-            },
-            _ => {}
-        }
-        i = (i + 1) % 10;
-        j += 1;
-    }
-    None
 }
 
 fn tab(game_state: &mut GameState) {
-    match next_unit_idx((game_state.selection + 1) % 10, game_state.my_units) {
-        Some(i) => game_state.selection = i,
-        None => {}
-    }
+    game_state.selection = (game_state.selection + 1) % game_state.my_units.len();
 }
 
-fn add_command(commands: &mut [GameCommand; 10], command: &GameCommand) {
-    let mut i = 0;
-    while i < 10 {
-        match commands[i] {
-            GameCommand::Move(255, _) => break,
-            _ => {}
-        }   
-        i += 1
-    }
-
-    if i < 10 {
-        commands[i] = *command;
-    }
-}
-
-fn collides(units: [Option<(UnitEnum, Unit)>; 10], p: Vector2, s: Vector2, unit_size: &HashMap<UnitEnum, Vector2>) -> bool {
-    let mut i = 0 as usize;
-    while i < 10 {
-        match units[i] {
-            Some((u_enum, u)) => {
-                let t = p.y;
-                let b = p.y + s.y;
-                let l = p.x;
-                let r = p.x + s.x;
-                let tt = u.pos.y;
-                let bb = u.pos.y + unit_size[&u_enum].y;
-                let ll = u.pos.x;
-                let rr = u.pos.x + unit_size[&u_enum].x;
-                if !(b < tt || t > bb || l > rr || r < ll) {
-                    return true;
-                }
-            }
-            None => {}
+fn collides(units: &Vec<(UnitEnum, Unit)>, p: Vector2, s: Vector2, unit_size: &HashMap<UnitEnum, Vector2>) -> bool {
+    for (u_enum, u) in units {
+        let t = p.y;
+        let b = p.y + s.y;
+        let l = p.x;
+        let r = p.x + s.x;
+        let tt = u.pos.y;
+        let bb = u.pos.y + unit_size[&u_enum].y;
+        let ll = u.pos.x;
+        let rr = u.pos.x + unit_size[&u_enum].x;
+        if !(b < tt || t > bb || l > rr || r < ll) {
+            return true;
         }
-        i += 1;
     }
     false
 }
 
 fn spawn(game_state: &GameState, player_id: u8, t: UnitEnum, spawn_pos: &[Vector2; 2], unit_size: &HashMap<UnitEnum, Vector2>) -> Option<GameCommand> {
-    if collides(game_state.my_units, spawn_pos[player_id as usize], unit_size[&t], unit_size) ||
-        collides(game_state.other_units, spawn_pos[player_id as usize], unit_size[&t], unit_size) {
+    if collides(&game_state.my_units, spawn_pos[player_id as usize], unit_size[&t], unit_size) ||
+        collides(&game_state.other_units, spawn_pos[player_id as usize], unit_size[&t], unit_size) {
         None
     } else {
-        next_free_idx(0, game_state.my_units).map(|i| GameCommand::Spawn(i, t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], dir: Dir::Stop }))
+        Some(GameCommand::Spawn(t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], dir: Dir::Stop }))
     }
+}
+
+fn move_units(units: &mut Vec<(UnitEnum, Unit)>, unit_speeds: &HashMap<UnitEnum, f32>) {
+    units.iter_mut().for_each(|unit| *unit = (unit.0, Unit { pos: move_(unit.1.pos, unit.1.dir, unit_speeds[&unit.0]), ..unit.1 }));
 }
 
 fn main() -> std::io::Result<()> {
     let frame_rate = 15;
+    let max_input_queue = 10;
     let unit_speeds = HashMap::from([
         (UnitEnum::Interceptor, 1.0f32),
         (UnitEnum::MessageBox, 1.0f32)
@@ -184,13 +130,13 @@ fn main() -> std::io::Result<()> {
     rl.set_target_fps(frame_rate);
 
     let mut state = ClientState::SendHello;
-    let mut game_state: GameState = GameState { my_units: [None; 10], other_units: [None; 10], selection: 0 };
+    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: 0 };
     let mut p_id = 0u8;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i64 = 0;
     let mut s_time = 0f64;
     let mut sent_frame = 0;
-    let mut unsent_pkt = [GameCommand::Move(255, Dir::Stop); 10];
+    let mut unsent_pkt = vec![];
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
 
@@ -222,7 +168,7 @@ fn main() -> std::io::Result<()> {
                     None => ClientState::Waiting,
                     Some(ServerEnum::Start) => {
                         frame_counter = 0;
-                        unsent_pkt = [GameCommand::Move(255, Dir::Stop); 10];
+                        unsent_pkt = vec![];
                         ClientState::Started(false)
                     },
                     Some(_) => {
@@ -246,15 +192,19 @@ fn main() -> std::io::Result<()> {
                 }
 
                 loop {
+                    if unsent_pkt.len() > max_input_queue {
+                        break;
+                    }
+
                     match rl.get_key_pressed() {
                         Some(k) => {
                             match k {
-                                KeyboardKey::KEY_W => add_command(&mut unsent_pkt, &GameCommand::Move(game_state.selection, Dir::Up)),
-                                KeyboardKey::KEY_A => add_command(&mut unsent_pkt, &GameCommand::Move(game_state.selection, Dir::Left)),
-                                KeyboardKey::KEY_S => add_command(&mut unsent_pkt, &GameCommand::Move(game_state.selection, Dir::Down)),
-                                KeyboardKey::KEY_D => add_command(&mut unsent_pkt, &GameCommand::Move(game_state.selection, Dir::Right)),
-                                KeyboardKey::KEY_H => add_command(&mut unsent_pkt, &GameCommand::Move(game_state.selection, Dir::Stop)),
-                                KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &spawn_pos, &unit_size).map(|c| add_command(&mut unsent_pkt, &c)); },
+                                KeyboardKey::KEY_W => unsent_pkt.push(GameCommand::Move(game_state.selection, Dir::Up)),
+                                KeyboardKey::KEY_A => unsent_pkt.push(GameCommand::Move(game_state.selection, Dir::Left)),
+                                KeyboardKey::KEY_S => unsent_pkt.push(GameCommand::Move(game_state.selection, Dir::Down)),
+                                KeyboardKey::KEY_D => unsent_pkt.push(GameCommand::Move(game_state.selection, Dir::Right)),
+                                KeyboardKey::KEY_H => unsent_pkt.push(GameCommand::Move(game_state.selection, Dir::Stop)),
+                                KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &spawn_pos, &unit_size).map(|c| unsent_pkt.push(c)); },
                                 KeyboardKey::KEY_TAB => tab(&mut game_state),
                                 _ => {}
                             }
@@ -267,33 +217,19 @@ fn main() -> std::io::Result<()> {
                     socket_send(&socket, &server[0], &ClientPkt::Target { 
                         seq: seq_state.send_seq,
                         ack: seq_state.send_ack,
-                        updates: unsent_pkt,
+                        updates: unsent_pkt.clone(),
                         frame: frame_counter,
                     })?;
                     seq_state.send();
 
                     apply_updates(&mut game_state.my_units, &unsent_pkt);
-                    unsent_pkt = [GameCommand::Move(255, Dir::Stop); 10];
+                    unsent_pkt = vec![];
                     sent_frame += 2;
                 }
 
                 if (go || (frame_counter % 2 == 1)) && !ended {
-                    for i in 0..10 {
-                        game_state.my_units[i] = match game_state.my_units[i] {
-                            Some((t, u)) => {
-                                Some((t, Unit { pos: move_(u.pos, u.dir, unit_speeds[&t]), ..u }))
-                            },
-                            None => None
-                        } 
-                    }
-                    for i in 0..10 {
-                        game_state.other_units[i] = match game_state.other_units[i] {
-                            Some((t, u)) => {
-                                Some((t, Unit { pos: move_(u.pos, u.dir, unit_speeds[&t]), ..u }))
-                            },
-                            None => None
-                        } 
-                    }
+                    move_units(&mut game_state.my_units, &unit_speeds);
+                    move_units(&mut game_state.other_units, &unit_speeds);
                     frame_counter += 1;
                 }
 
@@ -306,25 +242,15 @@ fn main() -> std::io::Result<()> {
 
         d.clear_background(Color::WHITE);
 
-        for i in 0..10 {
-            match game_state.my_units[i] {
-                Some((t, u)) => {
-                    d.draw_rectangle_v(u.pos, unit_size[&t], player_colors[&t]);
-                    if game_state.selection == i as u8 {
-                        d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, unit_size[&t].x.round() as i32 + 1, unit_size[&t].y.round() as i32 + 1, Color::BLACK)
-                    }
-                },
-                None => {}
-            } 
+        for (i, (t, u)) in game_state.my_units.iter().enumerate() {
+            d.draw_rectangle_v(u.pos, unit_size[&t], player_colors[&t]);
+            if game_state.selection == i {
+                d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, unit_size[&t].x.round() as i32 + 1, unit_size[&t].y.round() as i32 + 1, Color::BLACK)
+            }
         }
 
-        for i in 0..10 {
-            match game_state.other_units[i] {
-                Some((t, u)) => {
-                    d.draw_rectangle_v(u.pos, unit_size[&t], enemy_colors[&t]);
-                },
-                None => {}
-            } 
+        for (t, u) in game_state.other_units.iter() {
+            d.draw_rectangle_v(u.pos, unit_size[&t], enemy_colors[&t]);
         }
 
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
