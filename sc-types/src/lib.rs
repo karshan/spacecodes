@@ -68,13 +68,16 @@ pub struct Unit {
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum UnitEnum {
     MessageBox,
-    Interceptor
+    Interceptor,
+    Dead
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum GameCommand {
     Move(usize, Dir),
-    Spawn(UnitEnum, Unit)
+    Spawn(UnitEnum, Unit),
+    #[serde(with = "Vector2Def")]
+    Intercept(Vector2),
 }
 
 #[derive(Deserialize, Serialize)]

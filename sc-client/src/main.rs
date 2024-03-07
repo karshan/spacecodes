@@ -26,9 +26,10 @@ enum AreaEnum {
     Blocked
 }
 
-static START_FUEL: i32 = 1800;
+static START_FUEL: i32 = 18000;
 static FUEL_LOSS: i32 = 1; // per frame
 static MSG_FUEL: i32 = 600;
+static INTERCEPT_RADIUS: f32 = 40f32;
 static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
     (AreaEnum::Blocked, Rect {
         x: 328, y: 200,
@@ -111,7 +112,7 @@ fn move_(unit: Unit, speed: f32) -> Vector2 {
     }
 }
 
-fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand]) -> Option<usize> {
+fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], other_units: &mut Vec<(UnitEnum, Unit)>, animations: &mut Vec<Vector2>) -> Option<usize> {
     let mut spawn_id = None;
     for u in updates {
         match u {
@@ -123,8 +124,27 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand]) -> 
                 spawn_id = Some(units.len());
                 units.push((*t, *u));
             },
+            GameCommand::Intercept(pos) => {
+                animations.push(pos.clone());
+                for (t, unit) in other_units.iter_mut() {
+                    match t {
+                        UnitEnum::MessageBox => {
+                            // FIXME use unit_size
+                            let unit_cen = Vector2 { x: unit.pos.x + 10f32, y: unit.pos.y + 10f32 };
+                            if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
+                                *t = UnitEnum::Dead;
+                            }
+                        },
+                        _ => {}
+                    }
+                }
+            }
         }
     }
+    other_units.retain(|(t, _)| match t {
+        UnitEnum::Dead => false,
+        _ => true
+    });
     spawn_id
 }
 
@@ -135,7 +155,7 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
         // FIXME Lookup PxStation in GAME_MAP not hardcoded index
         UnitEnum::MessageBox => !collide_rect(&unit_rect(*u), &GAME_MAP[2 + u.player_id * 2].1),
         _ => true
-    }
+    };
 
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
@@ -148,7 +168,9 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
 }
 
 fn tab(game_state: &mut GameState) {
-    game_state.selection = (game_state.selection + 1) % game_state.my_units.len();
+    if game_state.my_units.len() > 0 {
+        game_state.selection = (game_state.selection + 1) % game_state.my_units.len();
+    }
 }
 
 fn contain_rect<T: Num + PartialOrd + Copy>(parent: &Rect<T>, child: &Rect<T>) -> bool {
@@ -221,11 +243,12 @@ fn main() -> std::io::Result<()> {
 
 
     let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        println!("Usage {} server_addr", args[0]);
-        std::process::exit(1);
+    let mut server_addr = "192.168.1.145:8080";
+    if args.len() >= 2 {
+        //println!("Usage {} server_addr", args[0]);
+        //std::process::exit(1);
+        server_addr = &args[1][..];
     }
-    let server_addr = &args[1][..];
 
     let server: Vec<std::net::SocketAddr> = server_addr
         .to_socket_addrs()
@@ -250,6 +273,7 @@ fn main() -> std::io::Result<()> {
     let mut s_time = 0f64;
     let mut sent_frame = 0;
     let mut unsent_pkt = vec![];
+    let mut animations = vec![];
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
 
@@ -295,7 +319,10 @@ fn main() -> std::io::Result<()> {
                     match resp {
                         None => {},
                         Some(ServerEnum::UpdateOtherTarget { updates, frame }) => {
-                            apply_updates(&mut game_state.other_units, &updates);
+                            apply_updates(&mut game_state.other_units, &updates, &mut game_state.my_units, &mut animations);
+                            if game_state.selection >= game_state.my_units.len() {
+                                game_state.selection = 0;
+                            }
                             go = true;
                         },
                         Some(_) => {
@@ -328,6 +355,17 @@ fn main() -> std::io::Result<()> {
                                 KeyboardKey::KEY_I => { spawn(&game_state, p_id, UnitEnum::Interceptor, &msg_spawn_pos, &unit_size).map(|c| unsent_pkt.push(c)); },
                                 KeyboardKey::KEY_O => { spawn(&game_state, p_id, UnitEnum::Interceptor, &int_spawn_pos, &unit_size).map(|c| unsent_pkt.push(c)); },
                                 KeyboardKey::KEY_TAB => tab(&mut game_state),
+                                KeyboardKey::KEY_SPACE => {
+                                    if game_state.selection < game_state.my_units.len() {
+                                        match game_state.my_units[game_state.selection] {
+                                            (UnitEnum::Interceptor, u) => {
+                                                // TODO cooldown
+                                                unsent_pkt.push(GameCommand::Intercept(u.pos + unit_size[&UnitEnum::Interceptor].scale_by(0.5f32)));
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                },
                                 _ => {}
                             }
                         }
@@ -344,7 +382,7 @@ fn main() -> std::io::Result<()> {
                     })?;
                     seq_state.send();
 
-                    match apply_updates(&mut game_state.my_units, &unsent_pkt) {
+                    match apply_updates(&mut game_state.my_units, &unsent_pkt, &mut game_state.other_units, &mut animations) {
                         Some(i) => game_state.selection = i,
                         None => {}
                     }
@@ -389,6 +427,7 @@ fn main() -> std::io::Result<()> {
                     d.draw_circle(cen.x.round() as i32, cen.y.round() as i32, unit_size[&t].x/2f32, c);
                 },
                 UnitEnum::MessageBox => d.draw_rectangle_v(u.pos, unit_size[&t], c),
+                _ => {}
             }
             if game_state.selection < game_state.my_units.len() && game_state.selection == i {
                 match t {
@@ -399,9 +438,15 @@ fn main() -> std::io::Result<()> {
                     UnitEnum::MessageBox => {
                         d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, unit_size[&t].x.round() as i32, unit_size[&t].y.round() as i32, Color::BLACK)
                     },
+                    _ => {}
                 }
             }
         }
+
+        for a in animations {
+            d.draw_circle(a.x.round() as i32, a.y.round() as i32, INTERCEPT_RADIUS - 10f32, Color::BLACK);
+        }
+        animations = vec![];
 
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
         d.draw_text(&frame_counter.to_string(), 20, 40, 20, Color::BLACK);
