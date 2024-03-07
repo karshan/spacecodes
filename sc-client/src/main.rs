@@ -187,18 +187,18 @@ fn collide_rect<T: Num + PartialOrd + Copy>(r1: &Rect<T>, r2: &Rect<T>) -> bool 
     !(b < tt || t > bb || l > rr || r < ll) 
 }
 
-fn collide_units(units: &Vec<(UnitEnum, Unit)>, p: Vector2, s: Vector2, unit_size: &HashMap<UnitEnum, Vector2>) -> Option<usize> {
+fn collide_units(units: &Vec<(UnitEnum, Unit)>, p: &Vector2, s: &Vector2) -> Option<usize> {
     for (i, (u_enum, u)) in units.iter().enumerate() {
-        if collide_rect(&Rect { x: p.x, y: p.y, w: s.x, h: s.y }, &Rect { x: u.pos.x, y: u.pos.y, w: unit_size[&u_enum].x, h: unit_size[&u_enum].y}) {
+        if collide_rect(&Rect { x: p.x, y: p.y, w: s.x, h: s.y }, &Rect { x: u.pos.x, y: u.pos.y, w: u_enum.size().x, h: u_enum.size().y}) {
             return Some(i);
         }
     }
     None
 }
 
-fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vector2; 2], unit_size: &HashMap<UnitEnum, Vector2>) -> Option<GameCommand> {
-    if collide_units(&game_state.my_units, spawn_pos[player_id as usize], unit_size[&t], unit_size).is_some() ||
-        collide_units(&game_state.other_units, spawn_pos[player_id as usize], unit_size[&t], unit_size).is_some() {
+fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vector2; 2]) -> Option<GameCommand> {
+    if collide_units(&game_state.my_units, &spawn_pos[player_id as usize], t.size()).is_some() ||
+        collide_units(&game_state.other_units, &spawn_pos[player_id as usize], t.size()).is_some() {
         None
     } else {
         Some(GameCommand::Spawn(t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], target: spawn_pos[player_id as usize] }))
@@ -213,21 +213,13 @@ fn selected_unit(game_state: &GameState) -> Option<(UnitEnum, Unit)> {
     }
 }
 
-fn move_units(units: &mut Vec<(UnitEnum, Unit)>, unit_speeds: &HashMap<UnitEnum, f32>) {
-    units.iter_mut().for_each(|unit| *unit = (unit.0, Unit { pos: move_(unit.1, unit_speeds[&unit.0]), ..unit.1 }));
+fn move_units(units: &mut Vec<(UnitEnum, Unit)>) {
+    units.iter_mut().for_each(|unit| *unit = (unit.0, Unit { pos: move_(unit.1, unit.0.speed()), ..unit.1 }));
 }
 
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let max_input_queue = 10;
-    let unit_speeds = HashMap::from([
-        (UnitEnum::Interceptor, 1.0f32),
-        (UnitEnum::MessageBox, 1.0f32)
-    ]);
-    let unit_size = HashMap::from([
-        (UnitEnum::Interceptor, Vector2 { x: 20.0, y: 20.0 }),
-        (UnitEnum::MessageBox, Vector2 { x: 20.0, y: 20.0 })
-    ]);
     let p0_colors = HashMap::from([
         (UnitEnum::Interceptor, Color::from_hex("90E0EF").unwrap()),
         (UnitEnum::MessageBox, Color::from_hex("90E0EF").unwrap()),
@@ -337,14 +329,14 @@ fn main() -> std::io::Result<()> {
                 }
 
                 if rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
-                    match collide_units(&game_state.my_units, rl.get_mouse_position(), Vector2 { x: 1f32, y: 1f32 }, &unit_size) {
+                    match collide_units(&game_state.my_units, &rl.get_mouse_position(), &Vector2 { x: 1f32, y: 1f32 }) {
                         Some(i) => game_state.selection = i,
                         None => {}
                     }
                 }
 
                 if rl.is_mouse_button_pressed(MouseButton::MOUSE_RIGHT_BUTTON) && unsent_pkt.len() < max_input_queue {
-                    selected_unit(&game_state).map(|(t, _)| unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: game_state.selection, target: rl.get_mouse_position() - unit_size[&t].scale_by(0.5f32) })));
+                    selected_unit(&game_state).map(|(t, _)| unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: game_state.selection, target: rl.get_mouse_position() - t.size().scale_by(0.5f32) })));
                 }
 
                 loop {
@@ -356,16 +348,16 @@ fn main() -> std::io::Result<()> {
                         Some(k) => {
                             match k {
                                 KeyboardKey::KEY_H => { selected_unit(&game_state).map(|(_, u)| unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: game_state.selection, target: u.pos }))); }
-                                KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &msg_spawn_pos, &unit_size).map(|c| unsent_pkt.push(c)); }
-                                KeyboardKey::KEY_I => { spawn(&game_state, p_id, UnitEnum::Interceptor, &msg_spawn_pos, &unit_size).map(|c| unsent_pkt.push(c)); },
-                                KeyboardKey::KEY_O => { spawn(&game_state, p_id, UnitEnum::Interceptor, &int_spawn_pos, &unit_size).map(|c| unsent_pkt.push(c)); },
+                                KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &msg_spawn_pos).map(|c| unsent_pkt.push(c)); }
+                                KeyboardKey::KEY_I => { spawn(&game_state, p_id, UnitEnum::Interceptor, &msg_spawn_pos).map(|c| unsent_pkt.push(c)); },
+                                KeyboardKey::KEY_O => { spawn(&game_state, p_id, UnitEnum::Interceptor, &int_spawn_pos).map(|c| unsent_pkt.push(c)); },
                                 KeyboardKey::KEY_TAB => tab(&mut game_state),
                                 KeyboardKey::KEY_SPACE => {
                                     if game_state.selection < game_state.my_units.len() {
                                         match game_state.my_units[game_state.selection] {
                                             (UnitEnum::Interceptor, u) => {
                                                 // TODO cooldown
-                                                unsent_pkt.push(GameCommand::Intercept(u.pos + unit_size[&UnitEnum::Interceptor].scale_by(0.5f32)));
+                                                unsent_pkt.push(GameCommand::Intercept(u.pos + UnitEnum::Interceptor.size().scale_by(0.5f32)));
                                             }
                                             _ => {}
                                         }
@@ -396,8 +388,8 @@ fn main() -> std::io::Result<()> {
                 }
 
                 if (go || (frame_counter % 2 == 1)) && !ended {
-                    move_units(&mut game_state.my_units, &unit_speeds);
-                    move_units(&mut game_state.other_units, &unit_speeds);
+                    move_units(&mut game_state.my_units);
+                    move_units(&mut game_state.other_units);
                     add_fuel(&mut game_state, p_id);
                     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
                     frame_counter += 1;
@@ -428,20 +420,20 @@ fn main() -> std::io::Result<()> {
             let c = if u.player_id == 0 { p0_colors[&t] } else { p1_colors[&t] };
             match t {
                 UnitEnum::Interceptor => {
-                    let cen = u.pos + unit_size[&t].scale_by(0.5f32);
-                    d.draw_circle(cen.x.round() as i32, cen.y.round() as i32, unit_size[&t].x/2f32, c);
+                    let cen = u.pos + t.size().scale_by(0.5f32);
+                    d.draw_circle(cen.x.round() as i32, cen.y.round() as i32, t.size().x/2f32, c);
                 },
-                UnitEnum::MessageBox => d.draw_rectangle_v(u.pos, unit_size[&t], c),
+                UnitEnum::MessageBox => d.draw_rectangle_v(u.pos, t.size(), c),
                 _ => {}
             }
             if game_state.selection < game_state.my_units.len() && game_state.selection == i {
                 match t {
                     UnitEnum::Interceptor => {
-                        let cen = u.pos + unit_size[&t].scale_by(0.5f32);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, unit_size[&t].x/2f32, Color::BLACK);
+                        let cen = u.pos + t.size().scale_by(0.5f32);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, t.size().x/2f32, Color::BLACK);
                     },
                     UnitEnum::MessageBox => {
-                        d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, unit_size[&t].x.round() as i32, unit_size[&t].y.round() as i32, Color::BLACK)
+                        d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, t.size().x.round() as i32, t.size().y.round() as i32, Color::BLACK)
                     },
                     _ => {}
                 }

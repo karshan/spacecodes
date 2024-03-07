@@ -35,7 +35,7 @@ impl SeqState {
 
 #[derive(Clone)]
 pub struct GameState {
-    pub my_units: Vec<(UnitEnum, Unit)>,
+    pub my_units: Vec<(UnitEnum, Unit)>,  // FIXME switch to HashMap for units so deletion doesn't mess up selection
     pub other_units: Vec<(UnitEnum, Unit)>,
     pub selection: usize,
     pub fuel: [i32; 2],
@@ -61,7 +61,25 @@ pub struct Unit {
 pub enum UnitEnum {
     MessageBox,
     Interceptor,
-    Dead
+    Dead,
+}
+
+impl UnitEnum {
+    pub fn size(self: &Self) -> &'static Vector2 {
+        match self {
+            UnitEnum::Interceptor => &Vector2 { x: 20f32, y: 20f32 },
+            UnitEnum::MessageBox => &Vector2 { x: 20f32, y: 20f32 },
+            UnitEnum::Dead => &Vector2 { x: 0f32, y: 0f32 },
+        }
+    }
+
+    pub fn speed(self: &Self) -> f32 {
+        match self {
+            UnitEnum::Interceptor => 1f32,
+            UnitEnum::MessageBox => 1f32,
+            UnitEnum::Dead => 0f32,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
