@@ -111,7 +111,8 @@ fn move_(unit: Unit, speed: f32) -> Vector2 {
     }
 }
 
-fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand]) {
+fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand]) -> Option<usize> {
+    let mut spawn_id = None;
     for u in updates {
         match u {
             GameCommand::Move(u_id, d) => {
@@ -119,21 +120,22 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand]) {
                 units[*u_id] = (t, Unit { dir: *d, ..u });
             },
             GameCommand::Spawn(t, u) => {
+                spawn_id = Some(units.len());
                 units.push((*t, *u));
             },
         }
     }
+    spawn_id
 }
 
 fn add_fuel(game_state: &mut GameState, p_id: usize) {
     let other_id = (p_id + 1) % 2;
 
-    // FIXME Lookup PxStation in GAME_MAP not hardcoded index
-    let my_station = &GAME_MAP[2 + p_id * 2].1;
     let f = |(t, u): &(UnitEnum, Unit)| match t {
-        UnitEnum::MessageBox => !collide_rect(&unit_rect(*u), my_station),
+        // FIXME Lookup PxStation in GAME_MAP not hardcoded index
+        UnitEnum::MessageBox => !collide_rect(&unit_rect(*u), &GAME_MAP[2 + u.player_id * 2].1),
         _ => true
-    };
+    }
 
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
@@ -166,18 +168,18 @@ fn collide_rect<T: Num + PartialOrd + Copy>(r1: &Rect<T>, r2: &Rect<T>) -> bool 
     !(b < tt || t > bb || l > rr || r < ll) 
 }
 
-fn collide_units(units: &Vec<(UnitEnum, Unit)>, p: Vector2, s: Vector2, unit_size: &HashMap<UnitEnum, Vector2>) -> bool {
-    for (u_enum, u) in units {
+fn collide_units(units: &Vec<(UnitEnum, Unit)>, p: Vector2, s: Vector2, unit_size: &HashMap<UnitEnum, Vector2>) -> Option<usize> {
+    for (i, (u_enum, u)) in units.iter().enumerate() {
         if collide_rect(&Rect { x: p.x, y: p.y, w: s.x, h: s.y }, &Rect { x: u.pos.x, y: u.pos.y, w: unit_size[&u_enum].x, h: unit_size[&u_enum].y}) {
-            return true;
+            return Some(i);
         }
     }
-    false
+    None
 }
 
 fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vector2; 2], unit_size: &HashMap<UnitEnum, Vector2>) -> Option<GameCommand> {
-    if collide_units(&game_state.my_units, spawn_pos[player_id as usize], unit_size[&t], unit_size) ||
-        collide_units(&game_state.other_units, spawn_pos[player_id as usize], unit_size[&t], unit_size) {
+    if collide_units(&game_state.my_units, spawn_pos[player_id as usize], unit_size[&t], unit_size).is_some() ||
+        collide_units(&game_state.other_units, spawn_pos[player_id as usize], unit_size[&t], unit_size).is_some() {
         None
     } else {
         Some(GameCommand::Spawn(t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], dir: Dir::Stop }))
@@ -302,8 +304,15 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
+                if rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
+                    match collide_units(&game_state.my_units, rl.get_mouse_position(), Vector2 { x: 1f32, y: 1f32 }, &unit_size) {
+                        Some(i) => game_state.selection = i,
+                        None => {}
+                    }
+                }
+
                 loop {
-                    if unsent_pkt.len() > max_input_queue {
+                    if unsent_pkt.len() >= max_input_queue {
                         break;
                     }
 
@@ -335,7 +344,10 @@ fn main() -> std::io::Result<()> {
                     })?;
                     seq_state.send();
 
-                    apply_updates(&mut game_state.my_units, &unsent_pkt);
+                    match apply_updates(&mut game_state.my_units, &unsent_pkt) {
+                        Some(i) => game_state.selection = i,
+                        None => {}
+                    }
                     unsent_pkt = vec![];
                     sent_frame += 2;
                 }
