@@ -62,6 +62,7 @@ pub struct Unit {
     pub pos: Vector2,
     #[serde(with = "Vector2Def")]
     pub target: Vector2,
+    pub cooldown: i32,
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
@@ -87,6 +88,14 @@ impl UnitEnum {
             UnitEnum::Dead => 0f32,
         }
     }
+
+    pub fn cooldown(self: &Self) -> i32 {
+        match self {
+            UnitEnum::Interceptor => 360,
+            UnitEnum::MessageBox => 0,
+            UnitEnum::Dead => 0,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -97,11 +106,17 @@ pub struct MoveCommand {
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub struct InterceptCommand {
+    pub u_id: usize,
+    #[serde(with = "Vector2Def")]
+    pub pos: Vector2,
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum GameCommand {
     Move(MoveCommand),
     Spawn(UnitEnum, Unit),
-    #[serde(with = "Vector2Def")]
-    Intercept(Vector2),
+    Intercept(InterceptCommand),
 }
 
 #[derive(Deserialize, Serialize)]

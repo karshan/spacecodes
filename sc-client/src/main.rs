@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::cmp::min;
+use std::cmp::{min, max};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
 use std::fmt;
@@ -75,7 +75,6 @@ fn unit_rect(t: UnitEnum, u: Unit) -> Rect<i32> {
     Rect { x: u.pos.x.round() as i32, y: u.pos.y.round() as i32, w: t.size().x.round() as i32, h: t.size().y.round() as i32 }
 }
 
-
 fn move_(unit: Unit, speed: f32) -> Vector2 {
     let new_pos = if (unit.target - unit.pos).length_sqr() < speed * speed {
             unit.target
@@ -118,7 +117,8 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], oth
             GameCommand::Spawn(t, u) => {
                 units.push((*t, *u));
             },
-            GameCommand::Intercept(pos) => {
+            GameCommand::Intercept(InterceptCommand { u_id, pos }) => {
+                units[*u_id].1.cooldown = UnitEnum::Interceptor.cooldown();
                 animations.push(pos.clone());
                 for (t, unit) in other_units.iter_mut() {
                     match t {
@@ -161,6 +161,12 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
 }
 
+fn tick_cooldowns(game_state: &mut GameState) {
+    for (_, u) in game_state.my_units.iter_mut().chain(game_state.other_units.iter_mut()) {
+        u.cooldown = max(0, u.cooldown - 1);
+    }
+}
+
 fn contain_rect<T: Num + PartialOrd + Copy>(parent: &Rect<T>, child: &Rect<T>) -> bool {
     child.x >= parent.x && child.x + child.w <= parent.x + parent.w &&
         child.y >= parent.y && child.y + child.h <= parent.y + parent.h
@@ -192,7 +198,7 @@ fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vec
         collide_units(&game_state.other_units, &spawn_pos[player_id as usize], t.size()).is_some() {
         None
     } else {
-        Some(GameCommand::Spawn(t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], target: spawn_pos[player_id as usize] }))
+        Some(GameCommand::Spawn(t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], target: spawn_pos[player_id as usize], cooldown: 0 }))
     }
 }
 
@@ -360,8 +366,9 @@ fn main() -> std::io::Result<()> {
                                     match game_state.selection {
                                         Selection::Unit(s) => {
                                             if let (UnitEnum::Interceptor, u) = game_state.my_units[s] {
-                                                // TODO cooldown
-                                                unsent_pkt.push(GameCommand::Intercept(u.pos + UnitEnum::Interceptor.size().scale_by(0.5f32)));
+                                                if u.cooldown <= 0 {
+                                                    unsent_pkt.push(GameCommand::Intercept(InterceptCommand { u_id: s, pos: u.pos + UnitEnum::Interceptor.size().scale_by(0.5f32) }));
+                                                }
                                             }
                                         },
                                         Selection::Station => {
@@ -399,6 +406,7 @@ fn main() -> std::io::Result<()> {
                     add_fuel(&mut game_state, p_id);
                     fix_selection(&mut game_state);
                     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
+                    tick_cooldowns(&mut game_state);
                     frame_counter += 1;
                 }
 
@@ -445,6 +453,7 @@ fn main() -> std::io::Result<()> {
                         },
                         _ => {}
                     }
+                    d.draw_text(&format!("CD: {}", u.cooldown), 20, 60, 20, Color::BLACK);
                 },
                 Selection::Ship => {
                     // FIXME need to be able to lookup ship/station rects
@@ -467,6 +476,7 @@ fn main() -> std::io::Result<()> {
 
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
         d.draw_text(&frame_counter.to_string(), 20, 40, 20, Color::BLACK);
+
 
     }
     Ok(())
