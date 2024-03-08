@@ -71,9 +71,8 @@ impl fmt::Display for ClientState {
     }
 }
 
-// FIXME use unit_size
-fn unit_rect(u: Unit) -> Rect<i32> {
-    Rect { x: u.pos.x.round() as i32, y: u.pos.y.round() as i32, w: 20, h: 20 }
+fn unit_rect(t: UnitEnum, u: Unit) -> Rect<i32> {
+    Rect { x: u.pos.x.round() as i32, y: u.pos.y.round() as i32, w: t.size().x.round() as i32, h: t.size().y.round() as i32 }
 }
 
 
@@ -109,8 +108,7 @@ fn move_(unit: Unit, speed: f32) -> Vector2 {
     }
 }
 
-fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], other_units: &mut Vec<(UnitEnum, Unit)>, animations: &mut Vec<Vector2>) -> Option<usize> {
-    let mut spawn_id = None;
+fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], other_units: &mut Vec<(UnitEnum, Unit)>, animations: &mut Vec<Vector2>) {
     for u in updates {
         match u {
             GameCommand::Move(MoveCommand { u_id, target }) => {
@@ -118,7 +116,6 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], oth
                 units[*u_id] = (t, Unit { target: *target, ..u });
             },
             GameCommand::Spawn(t, u) => {
-                spawn_id = Some(units.len());
                 units.push((*t, *u));
             },
             GameCommand::Intercept(pos) => {
@@ -126,8 +123,7 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], oth
                 for (t, unit) in other_units.iter_mut() {
                     match t {
                         UnitEnum::MessageBox => {
-                            // FIXME use unit_size
-                            let unit_cen = Vector2 { x: unit.pos.x + 10f32, y: unit.pos.y + 10f32 };
+                            let unit_cen = unit.pos + t.size().scale_by(0.5f32);
                             if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
                                 *t = UnitEnum::Dead;
                             }
@@ -138,11 +134,11 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], oth
             }
         }
     }
+    // FIXME game_state.selection is broken when unit vec changes size
     other_units.retain(|(t, _)| match t {
         UnitEnum::Dead => false,
         _ => true
     });
-    spawn_id
 }
 
 fn add_fuel(game_state: &mut GameState, p_id: usize) {
@@ -150,24 +146,19 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
 
     let f = |(t, u): &(UnitEnum, Unit)| match t {
         // FIXME Lookup PxStation in GAME_MAP not hardcoded index
-        UnitEnum::MessageBox => !collide_rect(&unit_rect(*u), &GAME_MAP[2 + u.player_id * 2].1),
+        UnitEnum::MessageBox => !collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1),
         _ => true
     };
 
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
 
+    // FIXME game_state.selection is broken when unit vec changes size
     game_state.my_units.retain(f);
     game_state.other_units.retain(f);
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
-}
-
-fn tab(game_state: &mut GameState) {
-    if game_state.my_units.len() > 0 {
-        game_state.selection = (game_state.selection + 1) % game_state.my_units.len();
-    }
 }
 
 fn contain_rect<T: Num + PartialOrd + Copy>(parent: &Rect<T>, child: &Rect<T>) -> bool {
@@ -205,16 +196,29 @@ fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vec
     }
 }
 
-fn selected_unit(game_state: &GameState) -> Option<(UnitEnum, Unit)> {
-    if game_state.selection < game_state.my_units.len() {
-        Some(game_state.my_units[game_state.selection])
-    } else {
-        None
+fn selected_unit(game_state: &GameState) -> Option<(usize, (UnitEnum, Unit))> {
+    match game_state.selection {
+        Selection::Unit(s) => {
+            if s < game_state.my_units.len() {
+                Some((s, game_state.my_units[s]))
+            } else {
+                None
+            }
+        },
+        _ => None
     }
 }
 
 fn move_units(units: &mut Vec<(UnitEnum, Unit)>) {
     units.iter_mut().for_each(|unit| *unit = (unit.0, Unit { pos: move_(unit.1, unit.0.speed()), ..unit.1 }));
+}
+
+fn fix_selection(game_state: &mut GameState) {
+    if let Selection::Unit(s) = game_state.selection {
+        if s >= game_state.my_units.len() {
+            game_state.selection = Selection::Ship;
+        }
+    }
 }
 
 fn main() -> std::io::Result<()> {
@@ -263,7 +267,7 @@ fn main() -> std::io::Result<()> {
     rl.set_target_fps(frame_rate);
 
     let mut state = ClientState::SendHello;
-    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: 0, fuel: [START_FUEL; 2] };
+    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: Selection::Ship, fuel: [START_FUEL; 2] };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i64 = 0;
@@ -317,9 +321,7 @@ fn main() -> std::io::Result<()> {
                         None => {},
                         Some(ServerEnum::UpdateOtherTarget { updates, frame }) => {
                             apply_updates(&mut game_state.other_units, &updates, &mut game_state.my_units, &mut animations);
-                            if game_state.selection >= game_state.my_units.len() {
-                                game_state.selection = 0;
-                            }
+                            fix_selection(&mut game_state);
                             go = true;
                         },
                         Some(_) => {
@@ -330,13 +332,14 @@ fn main() -> std::io::Result<()> {
 
                 if rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
                     match collide_units(&game_state.my_units, &rl.get_mouse_position(), &Vector2 { x: 1f32, y: 1f32 }) {
-                        Some(i) => game_state.selection = i,
+                        Some(i) => game_state.selection = Selection::Unit(i),
                         None => {}
                     }
                 }
 
                 if rl.is_mouse_button_pressed(MouseButton::MOUSE_RIGHT_BUTTON) && unsent_pkt.len() < max_input_queue {
-                    selected_unit(&game_state).map(|(t, _)| unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: game_state.selection, target: rl.get_mouse_position() - t.size().scale_by(0.5f32) })));
+                    selected_unit(&game_state).map(|(s, (t, _))| unsent_pkt
+                            .push(GameCommand::Move(MoveCommand { u_id: s, target: rl.get_mouse_position() - t.size().scale_by(0.5f32) })));
                 }
 
                 loop {
@@ -347,20 +350,24 @@ fn main() -> std::io::Result<()> {
                     match rl.get_key_pressed() {
                         Some(k) => {
                             match k {
-                                KeyboardKey::KEY_H => { selected_unit(&game_state).map(|(_, u)| unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: game_state.selection, target: u.pos }))); }
+                                KeyboardKey::KEY_H => { selected_unit(&game_state).map(|(s, (_, u))| unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: s, target: u.pos }))); },
                                 KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &msg_spawn_pos).map(|c| unsent_pkt.push(c)); }
                                 KeyboardKey::KEY_I => { spawn(&game_state, p_id, UnitEnum::Interceptor, &msg_spawn_pos).map(|c| unsent_pkt.push(c)); },
                                 KeyboardKey::KEY_O => { spawn(&game_state, p_id, UnitEnum::Interceptor, &int_spawn_pos).map(|c| unsent_pkt.push(c)); },
-                                KeyboardKey::KEY_TAB => tab(&mut game_state),
                                 KeyboardKey::KEY_SPACE => {
-                                    if game_state.selection < game_state.my_units.len() {
-                                        match game_state.my_units[game_state.selection] {
-                                            (UnitEnum::Interceptor, u) => {
+                                    match game_state.selection {
+                                        Selection::Unit(s) => {
+                                            if let (UnitEnum::Interceptor, u) = game_state.my_units[s] {
                                                 // TODO cooldown
                                                 unsent_pkt.push(GameCommand::Intercept(u.pos + UnitEnum::Interceptor.size().scale_by(0.5f32)));
                                             }
-                                            _ => {}
-                                        }
+                                        },
+                                        Selection::Station => {
+                                            todo!("Space station fire projectile")
+                                        },
+                                        Selection::Ship => {
+                                            todo!("Ship fire projectile")
+                                        },
                                     }
                                 },
                                 _ => {}
@@ -379,10 +386,7 @@ fn main() -> std::io::Result<()> {
                     })?;
                     seq_state.send();
 
-                    match apply_updates(&mut game_state.my_units, &unsent_pkt, &mut game_state.other_units, &mut animations) {
-                        Some(i) => game_state.selection = i,
-                        None => {}
-                    }
+                    apply_updates(&mut game_state.my_units, &unsent_pkt, &mut game_state.other_units, &mut animations);
                     unsent_pkt = vec![];
                     sent_frame += 2;
                 }
@@ -391,6 +395,7 @@ fn main() -> std::io::Result<()> {
                     move_units(&mut game_state.my_units);
                     move_units(&mut game_state.other_units);
                     add_fuel(&mut game_state, p_id);
+                    fix_selection(&mut game_state);
                     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
                     frame_counter += 1;
                 }
@@ -426,17 +431,26 @@ fn main() -> std::io::Result<()> {
                 UnitEnum::MessageBox => d.draw_rectangle_v(u.pos, t.size(), c),
                 _ => {}
             }
-            if game_state.selection < game_state.my_units.len() && game_state.selection == i {
-                match t {
-                    UnitEnum::Interceptor => {
-                        let cen = u.pos + t.size().scale_by(0.5f32);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, t.size().x/2f32, Color::BLACK);
-                    },
-                    UnitEnum::MessageBox => {
-                        d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, t.size().x.round() as i32, t.size().y.round() as i32, Color::BLACK)
-                    },
-                    _ => {}
-                }
+            match game_state.selection {
+                Selection::Unit(s) if s == i => {
+                    match t {
+                        UnitEnum::Interceptor => {
+                            let cen = u.pos + t.size().scale_by(0.5f32);
+                            d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, t.size().x/2f32, Color::BLACK);
+                        },
+                        UnitEnum::MessageBox => {
+                            d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, t.size().x.round() as i32, t.size().y.round() as i32, Color::BLACK)
+                        },
+                        _ => {}
+                    }
+                },
+                Selection::Ship => {
+                    // TODO show ship selection
+                },
+                Selection::Station => {
+                    // TODO show station selection
+                },
+                Selection::Unit(_) => {}
             }
         }
 
