@@ -145,7 +145,7 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     let other_id = (p_id + 1) % 2;
 
     let f = |(t, u): &(UnitEnum, Unit)| match t {
-        // FIXME Lookup PxStation in GAME_MAP not hardcoded index
+        // FIXME need to be able to lookup ship/station rects
         UnitEnum::MessageBox => !collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1),
         _ => true
     };
@@ -354,6 +354,8 @@ fn main() -> std::io::Result<()> {
                                 KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &msg_spawn_pos).map(|c| unsent_pkt.push(c)); }
                                 KeyboardKey::KEY_I => { spawn(&game_state, p_id, UnitEnum::Interceptor, &msg_spawn_pos).map(|c| unsent_pkt.push(c)); },
                                 KeyboardKey::KEY_O => { spawn(&game_state, p_id, UnitEnum::Interceptor, &int_spawn_pos).map(|c| unsent_pkt.push(c)); },
+                                KeyboardKey::KEY_ONE => game_state.selection = Selection::Ship,
+                                KeyboardKey::KEY_TWO => game_state.selection = Selection::Station,
                                 KeyboardKey::KEY_SPACE => {
                                     match game_state.selection {
                                         Selection::Unit(s) => {
@@ -445,10 +447,14 @@ fn main() -> std::io::Result<()> {
                     }
                 },
                 Selection::Ship => {
-                    // TODO show ship selection
+                    // FIXME need to be able to lookup ship/station rects
+                    let rect = &GAME_MAP[1 + p_id*2].1;
+                    d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, Color::BLACK)
                 },
                 Selection::Station => {
-                    // TODO show station selection
+                    // FIXME need to be able to lookup ship/station rects
+                    let rect = &GAME_MAP[2 + p_id*2].1;
+                    d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, Color::BLACK)
                 },
                 Selection::Unit(_) => {}
             }
