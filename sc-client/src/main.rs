@@ -26,10 +26,11 @@ enum AreaEnum {
     Blocked
 }
 
-static START_FUEL: i32 = 18000;
+static START_FUEL: i32 = 3600;
 static FUEL_LOSS: i32 = 1; // per frame
 static MSG_FUEL: i32 = 600;
 static INTERCEPT_RADIUS: f32 = 40f32;
+static INTERCEPTOR_EXPIRY: i32 = 1800;
 static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
     (AreaEnum::Blocked, Rect {
         x: 328, y: 200,
@@ -118,7 +119,7 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], oth
                 units.push((*t, *u));
             },
             GameCommand::Intercept(InterceptCommand { u_id, pos }) => {
-                units[*u_id].1.cooldown = UnitEnum::Interceptor.cooldown();
+                units[*u_id].1.cooldown = UnitEnum::Interceptor(0).cooldown();
                 animations.push(pos.clone());
                 for (t, unit) in other_units.iter_mut() {
                     match t {
@@ -156,15 +157,34 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     // FIXME game_state.selection is broken when unit vec changes size
     game_state.my_units.retain(f);
     game_state.other_units.retain(f);
+    fix_selection(game_state);
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
 }
 
-fn tick_cooldowns(game_state: &mut GameState) {
-    for (_, u) in game_state.my_units.iter_mut().chain(game_state.other_units.iter_mut()) {
+fn tick_cd_expiry(game_state: &mut GameState) {
+    for (t, u) in game_state.my_units.iter_mut().chain(game_state.other_units.iter_mut()) {
         u.cooldown = max(0, u.cooldown - 1);
+        if let UnitEnum::Interceptor(e) = t {
+            if *e == 1 {
+                *t = UnitEnum::Dead
+            } else {
+                *t = UnitEnum::Interceptor(max(0, *e - 1))
+            }
+        }
     }
+
+    game_state.my_units.retain(|(t, _)| match t {
+        UnitEnum::Dead => false,
+        _ => true
+    });
+
+    game_state.other_units.retain(|(t, _)| match t {
+        UnitEnum::Dead => false,
+        _ => true
+    });
+    fix_selection(game_state)
 }
 
 fn contain_rect<T: Num + PartialOrd + Copy>(parent: &Rect<T>, child: &Rect<T>) -> bool {
@@ -230,15 +250,7 @@ fn fix_selection(game_state: &mut GameState) {
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let max_input_queue = 10;
-    let p0_colors = HashMap::from([
-        (UnitEnum::Interceptor, Color::from_hex("90E0EF").unwrap()),
-        (UnitEnum::MessageBox, Color::from_hex("90E0EF").unwrap()),
-    ]);
-    let p1_colors = HashMap::from([
-        (UnitEnum::Interceptor, Color::from_hex("74C69D").unwrap()),
-        (UnitEnum::MessageBox, Color::from_hex("74C69D").unwrap()),
-    ]);
-    let area_colors = HashMap::from([
+        let area_colors = HashMap::from([
         (AreaEnum::P0Spawn, Color::from_hex("0077B6").unwrap()),
         (AreaEnum::P0Station, Color::from_hex("0077B6").unwrap()),
         (AreaEnum::P1Spawn, Color::from_hex("1B4332").unwrap()),
@@ -358,16 +370,16 @@ fn main() -> std::io::Result<()> {
                             match k {
                                 KeyboardKey::KEY_H => { selected_unit(&game_state).map(|(s, (_, u))| unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: s, target: u.pos }))); },
                                 KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &msg_spawn_pos).map(|c| unsent_pkt.push(c)); }
-                                KeyboardKey::KEY_I => { spawn(&game_state, p_id, UnitEnum::Interceptor, &msg_spawn_pos).map(|c| unsent_pkt.push(c)); },
-                                KeyboardKey::KEY_O => { spawn(&game_state, p_id, UnitEnum::Interceptor, &int_spawn_pos).map(|c| unsent_pkt.push(c)); },
+                                KeyboardKey::KEY_I => { spawn(&game_state, p_id, UnitEnum::Interceptor(INTERCEPTOR_EXPIRY), &msg_spawn_pos).map(|c| unsent_pkt.push(c)); },
+                                KeyboardKey::KEY_O => { spawn(&game_state, p_id, UnitEnum::Interceptor(INTERCEPTOR_EXPIRY), &int_spawn_pos).map(|c| unsent_pkt.push(c)); },
                                 KeyboardKey::KEY_ONE => game_state.selection = Selection::Ship,
                                 KeyboardKey::KEY_TWO => game_state.selection = Selection::Station,
                                 KeyboardKey::KEY_SPACE => {
                                     match game_state.selection {
                                         Selection::Unit(s) => {
-                                            if let (UnitEnum::Interceptor, u) = game_state.my_units[s] {
+                                            if let (UnitEnum::Interceptor(_), u) = game_state.my_units[s] {
                                                 if u.cooldown <= 0 {
-                                                    unsent_pkt.push(GameCommand::Intercept(InterceptCommand { u_id: s, pos: u.pos + UnitEnum::Interceptor.size().scale_by(0.5f32) }));
+                                                    unsent_pkt.push(GameCommand::Intercept(InterceptCommand { u_id: s, pos: u.pos + UnitEnum::Interceptor(0).size().scale_by(0.5f32) }));
                                                 }
                                             }
                                         },
@@ -404,9 +416,8 @@ fn main() -> std::io::Result<()> {
                     move_units(&mut game_state.my_units);
                     move_units(&mut game_state.other_units);
                     add_fuel(&mut game_state, p_id);
-                    fix_selection(&mut game_state);
                     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
-                    tick_cooldowns(&mut game_state);
+                    tick_cd_expiry(&mut game_state);
                     frame_counter += 1;
                 }
 
@@ -432,9 +443,9 @@ fn main() -> std::io::Result<()> {
         }
 
         for (i, (t, u)) in game_state.my_units.iter().chain(game_state.other_units.iter()).enumerate() {
-            let c = if u.player_id == 0 { p0_colors[&t] } else { p1_colors[&t] };
+            let c = if u.player_id == 0 { t.p0_colors() } else { t.p1_colors() };
             match t {
-                UnitEnum::Interceptor => {
+                UnitEnum::Interceptor(_) => {
                     let cen = u.pos + t.size().scale_by(0.5f32);
                     d.draw_circle(cen.x.round() as i32, cen.y.round() as i32, t.size().x/2f32, c);
                 },
@@ -444,9 +455,11 @@ fn main() -> std::io::Result<()> {
             match game_state.selection {
                 Selection::Unit(s) if s == i => {
                     match t {
-                        UnitEnum::Interceptor => {
+                        UnitEnum::Interceptor(e) => {
                             let cen = u.pos + t.size().scale_by(0.5f32);
                             d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, t.size().x/2f32, Color::BLACK);
+                            d.draw_text(&format!("E: {}", e), 20, 80, 20, Color::BLACK);
+
                         },
                         UnitEnum::MessageBox => {
                             d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, t.size().x.round() as i32, t.size().y.round() as i32, Color::BLACK)

@@ -2,7 +2,7 @@
 #[macro_use]
 extern crate serde_derive;
 
-use raylib::prelude::Vector2;
+use raylib::prelude::{Vector2,Color};
 // use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -68,14 +68,14 @@ pub struct Unit {
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum UnitEnum {
     MessageBox,
-    Interceptor,
+    Interceptor(i32),
     Dead,
 }
 
 impl UnitEnum {
     pub fn size(self: &Self) -> &'static Vector2 {
         match self {
-            UnitEnum::Interceptor => &Vector2 { x: 20f32, y: 20f32 },
+            UnitEnum::Interceptor(_) => &Vector2 { x: 20f32, y: 20f32 },
             UnitEnum::MessageBox => &Vector2 { x: 20f32, y: 20f32 },
             UnitEnum::Dead => &Vector2 { x: 0f32, y: 0f32 },
         }
@@ -83,7 +83,7 @@ impl UnitEnum {
 
     pub fn speed(self: &Self) -> f32 {
         match self {
-            UnitEnum::Interceptor => 1f32,
+            UnitEnum::Interceptor(_) => 1f32,
             UnitEnum::MessageBox => 1f32,
             UnitEnum::Dead => 0f32,
         }
@@ -91,9 +91,25 @@ impl UnitEnum {
 
     pub fn cooldown(self: &Self) -> i32 {
         match self {
-            UnitEnum::Interceptor => 360,
+            UnitEnum::Interceptor(_) => 360,
             UnitEnum::MessageBox => 0,
             UnitEnum::Dead => 0,
+        }
+    }
+
+    pub fn p0_colors(self: &Self) -> Color {
+        match self {
+            UnitEnum::Interceptor(_) => Color::from_hex("90E0EF").unwrap(),
+            UnitEnum::MessageBox => Color::from_hex("90E0EF").unwrap(),
+            UnitEnum::Dead => Color::BLACK,
+        }
+    }
+
+    pub fn p1_colors(self: &Self) -> Color {
+        match self {
+            UnitEnum::Interceptor(_) => Color::from_hex("74C69D").unwrap(),
+            UnitEnum::MessageBox => Color::from_hex("74C69D").unwrap(),
+            UnitEnum::Dead => Color::BLACK,
         }
     }
 }
