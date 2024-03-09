@@ -135,11 +135,6 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], oth
             }
         }
     }
-    // FIXME game_state.selection is broken when unit vec changes size
-    other_units.retain(|(t, _)| match t {
-        UnitEnum::Dead => false,
-        _ => true
-    });
 }
 
 fn add_fuel(game_state: &mut GameState, p_id: usize) {
@@ -154,10 +149,9 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
 
-    // FIXME game_state.selection is broken when unit vec changes size
-    game_state.my_units.retain(f);
+    reap(game_state);
     game_state.other_units.retain(f);
-    fix_selection(game_state);
+
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
@@ -175,16 +169,12 @@ fn tick_cd_expiry(game_state: &mut GameState) {
         }
     }
 
-    game_state.my_units.retain(|(t, _)| match t {
-        UnitEnum::Dead => false,
-        _ => true
-    });
-
+    reap(game_state);
     game_state.other_units.retain(|(t, _)| match t {
         UnitEnum::Dead => false,
         _ => true
     });
-    fix_selection(game_state)
+    
 }
 
 fn contain_rect<T: Num + PartialOrd + Copy>(parent: &Rect<T>, child: &Rect<T>) -> bool {
@@ -239,18 +229,32 @@ fn move_units(units: &mut Vec<(UnitEnum, Unit)>) {
     units.iter_mut().for_each(|unit| *unit = (unit.0, Unit { pos: move_(unit.1, unit.0.speed()), ..unit.1 }));
 }
 
-fn fix_selection(game_state: &mut GameState) {
+fn reap(game_state: &mut GameState) {
     let mut out = vec![];
     for s in &game_state.selection {
-        if let Selection::Unit(u_id) = s {
-            if *u_id < game_state.my_units.len() {
-                out.push(*s)
+        if let Selection::Unit(selection_uid) = s {
+            match game_state.my_units[*selection_uid] {
+                (UnitEnum::Dead, _) => {}
+                _ => {
+                    let mut count_dead = 0;
+                    for i in 0..*selection_uid {
+                        if let (UnitEnum::Dead, _) = game_state.my_units[i] {
+                            count_dead += 1;
+                        }
+                    }
+                    out.push(Selection::Unit(*selection_uid - count_dead));
+                }
             }
         } else {
             out.push(*s)
         }
     }
     game_state.selection = out;
+
+    game_state.my_units.retain(|(t, _)| match t {
+        UnitEnum::Dead => false,
+        _ => true
+    });
 }
 
 fn main() -> std::io::Result<()> {
@@ -347,7 +351,7 @@ fn main() -> std::io::Result<()> {
                         None => {},
                         Some(ServerEnum::UpdateOtherTarget { updates, frame }) => {
                             apply_updates(&mut game_state.other_units, &updates, &mut game_state.my_units, &mut animations);
-                            fix_selection(&mut game_state);
+                            reap(&mut game_state);
                             go = true;
                         },
                         Some(_) => {
