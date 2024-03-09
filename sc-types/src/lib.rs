@@ -48,6 +48,7 @@ pub struct GameState {
     pub other_units: Vec<(UnitEnum, Unit)>,
     pub selection: HashSet<Selection>,
     pub fuel: [i32; 2],
+    pub intercepted: [u8; 2],
 }
 
 #[derive(Serialize, Deserialize)]

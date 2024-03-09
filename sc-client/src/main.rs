@@ -32,6 +32,7 @@ static MSG_FUEL: i32 = 600;
 static INTERCEPT_RADIUS: f32 = 40f32;
 static INTERCEPTOR_EXPIRY: i32 = 1800;
 static MAX_INTERCEPTORS: usize = 4;
+static KILLS_TO_WIN: u8 = 10;
 static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
     (AreaEnum::Blocked, Rect {
         x: 328, y: 200,
@@ -109,7 +110,7 @@ fn move_(unit: Unit, speed: f32) -> Vector2 {
     }
 }
 
-fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], other_units: &mut Vec<(UnitEnum, Unit)>, animations: &mut Vec<Vector2>) {
+fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], other_units: &mut Vec<(UnitEnum, Unit)>, animations: &mut Vec<Vector2>) {
     for u in updates {
         match u {
             GameCommand::Move(MoveCommand { u_id, target }) => {
@@ -128,6 +129,7 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], oth
                             let unit_cen = unit.pos + t.size().scale_by(0.5f32);
                             if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
                                 *t = UnitEnum::Dead;
+                                *intercepted_count += 1;
                             }
                         },
                         _ => {}
@@ -148,7 +150,6 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     game_state.my_units.iter_mut().filter(|(t, u)| if let UnitEnum::MessageBox = t { collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1) } else { false }).for_each(|(t, _)| *t = UnitEnum::Dead);
     reap(game_state);
     game_state.other_units.retain(|(t, u)| if let UnitEnum::MessageBox = t { !collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1) } else { true });
-
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
@@ -318,7 +319,7 @@ fn main() -> std::io::Result<()> {
     rl.set_target_fps(frame_rate);
 
     let mut state = ClientState::SendHello;
-    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), fuel: [START_FUEL; 2] };
+    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), fuel: [START_FUEL; 2], intercepted: [0; 2] };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i64 = 0;
@@ -373,7 +374,7 @@ fn main() -> std::io::Result<()> {
                     match resp {
                         None => {},
                         Some(ServerEnum::UpdateOtherTarget { updates, frame }) => {
-                            apply_updates(&mut game_state.other_units, &updates, &mut game_state.my_units, &mut animations);
+                            apply_updates(&mut game_state.intercepted[(p_id + 1) % 2], &mut game_state.other_units, &updates, &mut game_state.my_units, &mut animations);
                             reap(&mut game_state);
                             go = true;
                         },
@@ -457,7 +458,7 @@ fn main() -> std::io::Result<()> {
                     })?;
                     seq_state.send();
 
-                    apply_updates(&mut game_state.my_units, &unsent_pkt, &mut game_state.other_units, &mut animations);
+                    apply_updates(&mut game_state.intercepted[p_id], &mut game_state.my_units, &unsent_pkt, &mut game_state.other_units, &mut animations);
                     unsent_pkt = vec![];
                     sent_frame += 2;
                 }
@@ -471,7 +472,7 @@ fn main() -> std::io::Result<()> {
                     frame_counter += 1;
                 }
 
-                if game_state.fuel.iter().any(|f| *f < 0) {
+                if game_state.fuel.iter().any(|f| *f < 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
                     ClientState::Started(true)
                 } else {
                     ClientState::Started(false)
@@ -555,8 +556,7 @@ fn main() -> std::io::Result<()> {
 
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
         d.draw_text(&frame_counter.to_string(), 20, 40, 20, Color::BLACK);
-
-
+        d.draw_text(&format!("{}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, 100, 20, Color::BLACK);
     }
     Ok(())
 }
