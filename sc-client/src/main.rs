@@ -31,6 +31,7 @@ static FUEL_LOSS: i32 = 1; // per frame
 static MSG_FUEL: i32 = 600;
 static INTERCEPT_RADIUS: f32 = 40f32;
 static INTERCEPTOR_EXPIRY: i32 = 1800;
+static MAX_INTERCEPTORS: usize = 4;
 static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
     (AreaEnum::Blocked, Rect {
         x: 328, y: 200,
@@ -209,7 +210,16 @@ fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vec
         !collide_units(&game_state.other_units, &spawn_pos[player_id as usize], t.size()).is_empty() {
         None
     } else {
-        Some(GameCommand::Spawn(t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], target: spawn_pos[player_id as usize], cooldown: 0 }))
+        let spawn_command = Some(GameCommand::Spawn(t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], target: spawn_pos[player_id as usize], cooldown: 0 }));
+        if let UnitEnum::Interceptor(_) = t {
+            if game_state.my_units.iter().filter(|(tt, _)| if let UnitEnum::Interceptor(_) = tt { true } else { false }).count() >= MAX_INTERCEPTORS {
+                None
+            } else {
+                spawn_command
+            }
+        } else {
+            spawn_command
+        }
     }
 }
 
