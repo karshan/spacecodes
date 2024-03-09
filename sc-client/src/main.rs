@@ -147,7 +147,7 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     // FIXME need to be able to lookup ship/station rects
     game_state.my_units.iter_mut().filter(|(t, u)| if let UnitEnum::MessageBox = t { collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1) } else { false }).for_each(|(t, _)| *t = UnitEnum::Dead);
     reap(game_state);
-    game_state.other_units.retain(|(t, u)| if let UnitEnum::MessageBox = t { !collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1) } else { false });
+    game_state.other_units.retain(|(t, u)| if let UnitEnum::MessageBox = t { !collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1) } else { true });
 
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
