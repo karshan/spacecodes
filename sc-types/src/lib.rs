@@ -33,7 +33,7 @@ impl SeqState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum Selection {
     Unit(usize),
     Station,
@@ -44,7 +44,7 @@ pub enum Selection {
 pub struct GameState {
     pub my_units: Vec<(UnitEnum, Unit)>,  // FIXME switch to HashMap for units so deletion doesn't mess up selection
     pub other_units: Vec<(UnitEnum, Unit)>,
-    pub selection: Selection,
+    pub selection: Vec<Selection>,
     pub fuel: [i32; 2],
 }
 
