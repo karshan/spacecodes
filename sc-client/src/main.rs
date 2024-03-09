@@ -489,7 +489,9 @@ fn main() -> std::io::Result<()> {
                 _ => d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]),
             }
         }
-
+        
+        let mut cds = vec![];
+        let mut exps = vec![];
         for (i, (t, u)) in game_state.my_units.iter().chain(game_state.other_units.iter()).enumerate() {
             let c = if u.player_id == 0 { t.p0_colors() } else { t.p1_colors() };
             match t {
@@ -500,6 +502,7 @@ fn main() -> std::io::Result<()> {
                 UnitEnum::MessageBox => d.draw_rectangle_v(u.pos, t.size(), c),
                 _ => {}
             }
+
             for s in &game_state.selection {
                 match s {
                     Selection::Unit(u_id) if *u_id == i => {
@@ -507,15 +510,14 @@ fn main() -> std::io::Result<()> {
                             UnitEnum::Interceptor(e) => {
                                 let cen = u.pos + t.size().scale_by(0.5f32);
                                 d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, t.size().x/2f32, Color::BLACK);
-                                d.draw_text(&format!("E: {}", e), 20, 80, 20, Color::BLACK);
-
+                                exps.push(e);
                             },
                             UnitEnum::MessageBox => {
                                 d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, t.size().x.round() as i32, t.size().y.round() as i32, Color::BLACK)
                             },
                             _ => {}
                         }
-                        d.draw_text(&format!("CD: {}", u.cooldown), 20, 60, 20, Color::BLACK);
+                        cds.push(u.cooldown);
                     },
                     Selection::Ship => {
                         // FIXME need to be able to lookup ship/station rects
@@ -529,7 +531,13 @@ fn main() -> std::io::Result<()> {
                     },
                     Selection::Unit(_) => {}
                 }
-            }
+            }   
+        }
+        if !cds.is_empty() {
+            d.draw_text(&format!("CD: {}", cds.iter().min().unwrap()), 20, 60, 20, Color::BLACK);
+        }
+        if !exps.is_empty() {
+            d.draw_text(&format!("E: {}", exps.iter().min().unwrap()), 20, 80, 20, Color::BLACK);
         }
 
         for a in animations {
