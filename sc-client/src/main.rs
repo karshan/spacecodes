@@ -293,11 +293,13 @@ fn main() -> std::io::Result<()> {
     let mut sent_frame = 0;
     let mut unsent_pkt = vec![];
     let mut animations = vec![];
+    let mut drag_select: Option<Vector2> = None;
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
 
     while !rl.window_should_close() {
         let mut go = false;
+        let mouse_position = rl.get_mouse_position();
 
         state = match state {
             ClientState::SendHello => {
@@ -348,12 +350,28 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                if rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
-                    match collide_units(&game_state.my_units, &rl.get_mouse_position(), &Vector2 { x: 1f32, y: 1f32 }) {
-                        Some(i) => game_state.selection = Selection::Unit(i),
-                        None => {}
+                drag_select = match drag_select {
+                    None => {
+                        if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                            Some(mouse_position)
+                        } else {
+                            None
+                        }
+                    },
+                    Some(start_pos) => {
+                        if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                            Some(start_pos)
+                        } else {
+                            let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
+                            let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
+                            match collide_units(&game_state.my_units, &selection_pos, &selection_size) {
+                                Some(i) => game_state.selection = Selection::Unit(i),
+                                None => {}
+                            }
+                            None
+                        }
                     }
-                }
+                };
 
                 if rl.is_mouse_button_pressed(MouseButton::MOUSE_RIGHT_BUTTON) && unsent_pkt.len() < max_input_queue {
                     selected_unit(&game_state).map(|(s, (t, _))| unsent_pkt
@@ -486,6 +504,12 @@ fn main() -> std::io::Result<()> {
             d.draw_circle(a.x.round() as i32, a.y.round() as i32, INTERCEPT_RADIUS - 10f32, Color::BLACK);
         }
         animations = vec![];
+
+        if let Some(start_pos) = drag_select {
+            let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
+            let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
+            d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::GREEN)
+        }
 
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
         d.draw_text(&frame_counter.to_string(), 20, 40, 20, Color::BLACK);
