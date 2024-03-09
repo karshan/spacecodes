@@ -2,6 +2,8 @@
 #[macro_use]
 extern crate serde_derive;
 
+use std::collections::HashSet;
+
 use raylib::prelude::{Vector2,Color};
 // use serde::{Deserialize, Serialize};
 
@@ -33,7 +35,7 @@ impl SeqState {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Ord, PartialOrd, PartialEq, Eq, Hash)]
 pub enum Selection {
     Unit(usize),
     Station,
@@ -44,7 +46,7 @@ pub enum Selection {
 pub struct GameState {
     pub my_units: Vec<(UnitEnum, Unit)>,  // FIXME switch to HashMap for units so deletion doesn't mess up selection
     pub other_units: Vec<(UnitEnum, Unit)>,
-    pub selection: Vec<Selection>,
+    pub selection: HashSet<Selection>,
     pub fuel: [i32; 2],
 }
 

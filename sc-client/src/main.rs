@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::cmp::{min, max};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
@@ -141,17 +141,13 @@ fn apply_updates(units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], oth
 fn add_fuel(game_state: &mut GameState, p_id: usize) {
     let other_id = (p_id + 1) % 2;
 
-    let f = |(t, u): &(UnitEnum, Unit)| match t {
-        // FIXME need to be able to lookup ship/station rects
-        UnitEnum::MessageBox => !collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1),
-        _ => true
-    };
-
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
 
+    // FIXME need to be able to lookup ship/station rects
+    game_state.my_units.iter_mut().filter(|(t, u)| if let UnitEnum::MessageBox = t { collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1) } else { false }).for_each(|(t, _)| *t = UnitEnum::Dead);
     reap(game_state);
-    game_state.other_units.retain(f);
+    game_state.other_units.retain(|(t, u)| if let UnitEnum::MessageBox = t { !collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1) } else { false });
 
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
@@ -255,7 +251,7 @@ fn move_units(units: &mut Vec<(UnitEnum, Unit)>) {
 }
 
 fn reap(game_state: &mut GameState) {
-    let mut out = vec![];
+    let mut out = HashSet::new();
     for s in &game_state.selection {
         if let Selection::Unit(selection_uid) = s {
             match game_state.my_units[*selection_uid] {
@@ -267,11 +263,11 @@ fn reap(game_state: &mut GameState) {
                             count_dead += 1;
                         }
                     }
-                    out.push(Selection::Unit(*selection_uid - count_dead));
+                    out.insert(Selection::Unit(*selection_uid - count_dead));
                 }
             }
         } else {
-            out.push(*s)
+            out.insert(*s);
         }
     }
     game_state.selection = out;
@@ -320,7 +316,7 @@ fn main() -> std::io::Result<()> {
     rl.set_target_fps(frame_rate);
 
     let mut state = ClientState::SendHello;
-    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: vec![], fuel: [START_FUEL; 2] };
+    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), fuel: [START_FUEL; 2] };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i64 = 0;
@@ -399,8 +395,12 @@ fn main() -> std::io::Result<()> {
                         } else {
                             let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
                             let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
-                            game_state.selection = vec![];
-                            game_state.selection.append(&mut collide_units(&game_state.my_units, &selection_pos, &selection_size).iter().map(|u_id| Selection::Unit(*u_id)).collect());
+                            let uids_in_box: Vec<Selection> = collide_units(&game_state.my_units, &selection_pos, &selection_size).iter().map(|u_id| Selection::Unit(*u_id)).collect();
+                            if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
+                                game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(uids_in_box)).cloned().collect();
+                            } else {
+                                game_state.selection = HashSet::from_iter(uids_in_box);
+                            }
                             None
                         }
                     }
@@ -428,8 +428,8 @@ fn main() -> std::io::Result<()> {
                                 KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &msg_spawn_pos).map(|c| unsent_pkt.push(c)); }
                                 KeyboardKey::KEY_I => { spawn(&game_state, p_id, UnitEnum::Interceptor(INTERCEPTOR_EXPIRY), &msg_spawn_pos).map(|c| unsent_pkt.push(c)); },
                                 KeyboardKey::KEY_O => { spawn(&game_state, p_id, UnitEnum::Interceptor(INTERCEPTOR_EXPIRY), &int_spawn_pos).map(|c| unsent_pkt.push(c)); },
-                                KeyboardKey::KEY_ONE => game_state.selection = vec![Selection::Ship],
-                                KeyboardKey::KEY_TWO => game_state.selection = vec![Selection::Station],
+                                KeyboardKey::KEY_ONE => game_state.selection = HashSet::from([Selection::Ship]),
+                                KeyboardKey::KEY_TWO => game_state.selection = HashSet::from([Selection::Station]),
                                 KeyboardKey::KEY_SPACE => {
                                     for (u_id, (t, u)) in selected_units(&game_state) {
                                         if let UnitEnum::Interceptor(_) = t {
@@ -489,7 +489,7 @@ fn main() -> std::io::Result<()> {
                 _ => d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]),
             }
         }
-        
+
         let mut cds = vec![];
         let mut exps = vec![];
         for (i, (t, u)) in game_state.my_units.iter().chain(game_state.other_units.iter()).enumerate() {
