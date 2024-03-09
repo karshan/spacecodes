@@ -334,6 +334,7 @@ fn main() -> std::io::Result<()> {
     while !rl.window_should_close() {
         let mut go = false;
         let mouse_position = rl.get_mouse_position();
+        let fps = rl.get_fps();
 
         state = match state {
             ClientState::SendHello => {
@@ -555,7 +556,7 @@ fn main() -> std::io::Result<()> {
         }
 
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
-        d.draw_text(&frame_counter.to_string(), 20, 40, 20, Color::BLACK);
+        d.draw_text(&fps.to_string(), 20, 40, 20, Color::BLACK);
         d.draw_text(&format!("{}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, 100, 20, Color::BLACK);
     }
     Ok(())
