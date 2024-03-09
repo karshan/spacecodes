@@ -226,7 +226,22 @@ fn selected_units(game_state: &GameState) -> Vec<(usize, (UnitEnum, Unit))> {
 }
 
 fn move_units(units: &mut Vec<(UnitEnum, Unit)>) {
-    units.iter_mut().for_each(|unit| *unit = (unit.0, Unit { pos: move_(unit.1, unit.0.speed()), ..unit.1 }));
+    let moved: Vec<_> = units.iter().map(|unit| (unit.0, Unit { pos: move_(unit.1, unit.0.speed()), ..unit.1 })).collect();
+    for i in 0..moved.len() {
+        let mut collided = false;
+        for j in 0..moved.len() {
+            if i == j {
+                continue;
+            }
+            if collide_rect(&unit_rect(moved[i].0, moved[i].1), &unit_rect(moved[j].0, moved[j].1)) {
+                collided = true;
+                break;
+            }
+        }
+        if !collided {
+            units[i] = moved[i];
+        }
+    }
 }
 
 fn reap(game_state: &mut GameState) {
