@@ -246,6 +246,8 @@ fn move_units(units: &mut Vec<(UnitEnum, Unit)>) {
         }
         if !collided {
             units[i] = moved[i];
+        } else {
+            units[i].1.target = units[i].1.pos;
         }
     }
 }
