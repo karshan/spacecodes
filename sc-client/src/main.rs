@@ -60,7 +60,8 @@ enum ClientState {
     SendHello,
     ExpectWelcome,
     Waiting,
-    Started(bool),
+    Started,
+    Ended(Option<usize>),
 }
 
 impl fmt::Display for ClientState {
@@ -69,7 +70,8 @@ impl fmt::Display for ClientState {
             ClientState::SendHello => write!(f, "SendHello"),
             ClientState::ExpectWelcome => write!(f, "ExpectWelcome"),
             ClientState::Waiting => write!(f, "Waiting"),
-            ClientState::Started(b) => write!(f, "Started {}", b),
+            ClientState::Started => write!(f, "Started"),
+            ClientState::Ended(_) => write!(f, "Ended"),
         }
     }
 }
@@ -328,6 +330,7 @@ fn main() -> std::io::Result<()> {
     let mut unsent_pkt = vec![];
     let mut animations = vec![];
     let mut drag_select: Option<Vector2> = None;
+    let mut ended = None;
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
 
@@ -362,14 +365,15 @@ fn main() -> std::io::Result<()> {
                     Some(ServerEnum::Start) => {
                         frame_counter = 0;
                         unsent_pkt = vec![];
-                        ClientState::Started(false)
+                        ended = None;
+                        ClientState::Started
                     },
                     Some(_) => {
                         panic!("Expected Start")
                     }
                 }
             },
-            ClientState::Started(ended) => {
+            ClientState::Started => {
                 if frame_counter % 2 == 0 {
                     let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
                     match resp {
@@ -464,7 +468,7 @@ fn main() -> std::io::Result<()> {
                     sent_frame += 2;
                 }
 
-                if (go || (frame_counter % 2 == 1)) && !ended {
+                if go || (frame_counter % 2 == 1) {
                     move_units(&mut game_state.my_units);
                     move_units(&mut game_state.other_units);
                     add_fuel(&mut game_state, p_id);
@@ -473,11 +477,27 @@ fn main() -> std::io::Result<()> {
                     frame_counter += 1;
                 }
 
-                if game_state.fuel.iter().any(|f| *f < 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
-                    ClientState::Started(true)
+                if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
+                    if game_state.intercepted.iter().all(|v| *v >= KILLS_TO_WIN) || game_state.fuel.iter().all(|f| *f <= 0) {
+                        ClientState::Ended(None)
+                    } else {
+                        if game_state.fuel[0] <= 0 && game_state.fuel[1] > 0 {
+                            ClientState::Ended(Some(1usize))
+                        } else if game_state.fuel[0] > 0 && game_state.fuel[1] <= 0 {
+                            ClientState::Ended(Some(0usize))
+                        } else if game_state.intercepted[0] >= KILLS_TO_WIN {
+                            ClientState::Ended(Some(0usize))
+                        } else {
+                            ClientState::Ended(Some(1usize))
+                        }
+                    }
                 } else {
-                    ClientState::Started(false)
+                    ClientState::Started
                 }
+            },
+            ClientState::Ended(end_state) => {
+                ended = Some(end_state);
+                ClientState::Ended(end_state)
             },
         };
 
@@ -558,6 +578,21 @@ fn main() -> std::io::Result<()> {
         d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
         d.draw_text(&fps.to_string(), 20, 40, 20, Color::BLACK);
         d.draw_text(&format!("{}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, 100, 20, Color::BLACK);
+        if let Some(end_state) = ended {
+            let end_str = match end_state {
+                Some(winner) => {
+                    if winner == p_id {
+                        "YOU WON"
+                    } else {
+                        "YOU LOST"
+                    }
+                },
+                None => {
+                    "DRAW"
+                }
+            };
+            d.draw_text(&end_str, 470, 370, 20, Color::BLACK);
+        }
     }
     Ok(())
 }
