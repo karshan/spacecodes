@@ -321,6 +321,7 @@ fn main() -> std::io::Result<()> {
     rl.set_target_fps(frame_rate);
 
     let mut state = ClientState::SendHello;
+    // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
     let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), fuel: [START_FUEL; 2], intercepted: [0; 2] };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
@@ -364,8 +365,12 @@ fn main() -> std::io::Result<()> {
                     None => ClientState::Waiting,
                     Some(ServerEnum::Start) => {
                         frame_counter = 0;
+                        sent_frame = 0;
                         unsent_pkt = vec![];
                         ended = None;
+                        animations = vec![];
+                        drag_select = None;
+                        game_state = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), fuel: [START_FUEL; 2], intercepted: [0; 2] };
                         ClientState::Started
                     },
                     Some(_) => {
@@ -478,6 +483,13 @@ fn main() -> std::io::Result<()> {
                 }
 
                 if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
+                    socket_send(&socket, &server[0], &ClientPkt::Ended { 
+                        seq: seq_state.send_seq,
+                        ack: seq_state.send_ack,
+                        frame: frame_counter,
+                    })?;
+                    seq_state.send();
+    
                     if game_state.intercepted.iter().all(|v| *v >= KILLS_TO_WIN) || game_state.fuel.iter().all(|f| *f <= 0) {
                         ClientState::Ended(None)
                     } else {
@@ -496,8 +508,14 @@ fn main() -> std::io::Result<()> {
                 }
             },
             ClientState::Ended(end_state) => {
-                ended = Some(end_state);
-                ClientState::Ended(end_state)
+                ended = Some(end_state); // For rendering
+                
+                if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
+                    seq_state = Default::default();
+                    ClientState::SendHello
+                } else {
+                    ClientState::Ended(end_state)
+                }
             },
         };
 

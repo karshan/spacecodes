@@ -3,11 +3,13 @@ use async_std::net::UdpSocket;
 use async_std::task;
 use sc_types::*;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::time::Instant;
 
 enum ServerState {
     Waiting,
     Started,
+    Ended(SocketAddr),
 }
 
 fn main() -> io::Result<()> {
@@ -76,8 +78,26 @@ fn main() -> io::Result<()> {
                                 }
                             }
                         },
-                        ServerState::Waiting => {}
+                        ServerState::Waiting => {},
+                        ServerState::Ended(_) => {},
                     }
+                }
+                ClientPkt::Ended { seq, ack, frame } => {
+                    let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
+                    r_seq_state.recv(seq, ack);
+                    match state {
+                        ServerState::Started => {
+                            state = ServerState::Ended(peer)
+                        },
+                        ServerState::Ended(ended_addr) => {
+                            if peer != ended_addr {
+                                conn_states.clear();
+                                state = ServerState::Waiting
+                            }
+                        },
+                        _ => {}
+                    }
+
                 }
             }
 

@@ -142,6 +142,7 @@ pub enum GameCommand {
 pub enum ClientPkt {
     Hello { seq: i32, sent_time: f64 },
     Target { seq: i32, ack: i32, updates: Vec<GameCommand>, frame: i64 },
+    Ended { seq: i32, ack: i32, frame: i64 },
 }
 
 #[derive(Deserialize, Serialize)]
