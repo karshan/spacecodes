@@ -2,82 +2,24 @@ use std::collections::{HashMap, HashSet};
 use std::cmp::{min, max};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
-use std::fmt;
 use num_traits::Num;
 use raylib::prelude::*;
 use sc_types::*;
+use sc_types::shapes::*;
 
 mod util;
+mod constants;
+
 use util::*;
+use constants::*;
 
-struct Rect<T: Num> {
-    x: T,
-    y: T,
-    w: T,
-    h: T,
-}
-
-#[derive(Eq, PartialEq, Hash)]
-enum AreaEnum {
-    P0Spawn,
-    P1Spawn,
-    P0Station,
-    P1Station,
-    Blocked
-}
-
-static START_FUEL: i32 = 3600;
-static FUEL_LOSS: i32 = 1; // per frame
-static MSG_FUEL: i32 = 600;
-static INTERCEPT_RADIUS: f32 = 40f32;
-static INTERCEPTOR_EXPIRY: i32 = 1800;
-static MAX_INTERCEPTORS: usize = 4;
-static KILLS_TO_WIN: u8 = 10;
-static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
-    (AreaEnum::Blocked, Rect {
-        x: 328, y: 200,
-        w: 368, h: 368
-    }),
-    (AreaEnum::P0Spawn, Rect {
-        x: 477, y: 200,
-        w: 70, h: 70
-    }),
-    (AreaEnum::P0Station, Rect {
-        x: 477, y: 498,
-        w: 70, h: 70
-    }),
-    (AreaEnum::P1Spawn, Rect {
-        x: 626, y: 349,
-        w: 70, h: 70
-    }),
-    (AreaEnum::P1Station, Rect {
-        x: 328, y: 349,
-        w: 70, h: 70
-    }),
-];
-
+#[derive(Debug)]
 enum ClientState {
     SendHello,
     ExpectWelcome,
     Waiting,
     Started,
     Ended(Option<usize>),
-}
-
-impl fmt::Display for ClientState {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ClientState::SendHello => write!(f, "SendHello"),
-            ClientState::ExpectWelcome => write!(f, "ExpectWelcome"),
-            ClientState::Waiting => write!(f, "Waiting"),
-            ClientState::Started => write!(f, "Started"),
-            ClientState::Ended(_) => write!(f, "Ended"),
-        }
-    }
-}
-
-fn unit_rect(t: UnitEnum, u: Unit) -> Rect<i32> {
-    Rect { x: u.pos.x.round() as i32, y: u.pos.y.round() as i32, w: t.size().x.round() as i32, h: t.size().y.round() as i32 }
 }
 
 fn move_(unit: Unit, speed: f32) -> Vector2 {
@@ -98,39 +40,39 @@ fn move_(unit: Unit, speed: f32) -> Vector2 {
             AreaEnum::P1Station => unit.player_id == 1,
             _ => false
         };
-        if safe_area && collide_rect(&r, &ur) {
+        if safe_area && r.collide(&ur) {
             is_safe = true;
         }
-        if *t == AreaEnum::Blocked && collide_rect(&r, &ur) {
+        if *t == AreaEnum::Blocked && r.collide(&ur) {
             is_blocked = true;
         }
     }
-    if !contain_rect(&play_area, &ur) || (!is_safe && is_blocked) {
+    if !play_area.contains(&ur) || (!is_safe && is_blocked) {
         unit.pos
     } else {
         new_pos
     }
 }
 
-fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<(UnitEnum, Unit)>, updates: &[GameCommand], other_units: &mut Vec<(UnitEnum, Unit)>, animations: &mut Vec<Vector2>) {
+fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<Unit>, updates: &[GameCommand], other_units: &mut Vec<Unit>, animations: &mut Vec<Vector2>) {
     for u in updates {
         match u {
             GameCommand::Move(MoveCommand { u_id, target }) => {
-                let (t, u) = units[*u_id];
-                units[*u_id] = (t, Unit { target: *target, ..u });
+                let u = units[*u_id];
+                units[*u_id] = Unit { target: *target, ..u };
             },
-            GameCommand::Spawn(t, u) => {
-                units.push((*t, *u));
+            GameCommand::Spawn(u) => {
+                units.push(*u);
             },
             GameCommand::Intercept(InterceptCommand { u_id, pos }) => {
-                units[*u_id].1.cooldown = UnitEnum::Interceptor(0).cooldown();
+                units[*u_id].cooldown = UnitEnum::Interceptor(0).cooldown();
                 animations.push(pos.clone());
-                for (t, unit) in other_units.iter_mut() {
-                    match t {
+                for unit in other_units.iter_mut() {
+                    match unit.type_ {
                         UnitEnum::MessageBox => {
-                            let unit_cen = unit.pos + t.size().scale_by(0.5f32);
+                            let unit_cen = unit.pos + unit.type_.size().scale_by(0.5f32);
                             if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
-                                *t = UnitEnum::Dead;
+                                unit.type_ = UnitEnum::Dead;
                                 *intercepted_count += 1;
                             }
                         },
@@ -149,55 +91,35 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     let num_other_units = game_state.other_units.len() as i32;
 
     // FIXME need to be able to lookup ship/station rects
-    game_state.my_units.iter_mut().filter(|(t, u)| if let UnitEnum::MessageBox = t { collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1) } else { false }).for_each(|(t, _)| *t = UnitEnum::Dead);
+    game_state.my_units.iter_mut().filter(|u| if let UnitEnum::MessageBox = u.type_ { u.rect().collide(&GAME_MAP[2 + u.player_id * 2].1) } else { false })
+        .for_each(|u| u.type_ = UnitEnum::Dead);
     reap(game_state);
-    game_state.other_units.retain(|(t, u)| if let UnitEnum::MessageBox = t { !collide_rect(&unit_rect(*t, *u), &GAME_MAP[2 + u.player_id * 2].1) } else { true });
+    game_state.other_units.retain(|u| if let UnitEnum::MessageBox = u.type_ { !u.rect().collide(&GAME_MAP[2 + u.player_id * 2].1) } else { true });
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
 }
 
 fn tick_cd_expiry(game_state: &mut GameState) {
-    for (t, u) in game_state.my_units.iter_mut().chain(game_state.other_units.iter_mut()) {
+    for u in game_state.my_units.iter_mut().chain(game_state.other_units.iter_mut()) {
         u.cooldown = max(0, u.cooldown - 1);
-        if let UnitEnum::Interceptor(e) = t {
-            if *e == 1 {
-                *t = UnitEnum::Dead
+        if let UnitEnum::Interceptor(e) = u.type_ {
+            if e == 1 {
+                u.type_ = UnitEnum::Dead
             } else {
-                *t = UnitEnum::Interceptor(max(0, *e - 1))
+                u.type_ = UnitEnum::Interceptor(max(0, e - 1))
             }
         }
     }
 
     reap(game_state);
-    game_state.other_units.retain(|(t, _)| match t {
-        UnitEnum::Dead => false,
-        _ => true
-    });
-    
+    game_state.other_units.retain(|u| u.type_ != UnitEnum::Dead);
 }
 
-fn contain_rect<T: Num + PartialOrd + Copy>(parent: &Rect<T>, child: &Rect<T>) -> bool {
-    child.x >= parent.x && child.x + child.w <= parent.x + parent.w &&
-        child.y >= parent.y && child.y + child.h <= parent.y + parent.h
-}
-
-fn collide_rect<T: Num + PartialOrd + Copy>(r1: &Rect<T>, r2: &Rect<T>) -> bool {
-    let t = r1.y;
-    let b = t + r1.h;
-    let l = r1.x;
-    let r = l + r1.w;
-    let tt = r2.y;
-    let bb = tt + r2.h;
-    let ll = r2.x;
-    let rr = ll + r2.w;
-    !(b < tt || t > bb || l > rr || r < ll) 
-}
-
-fn collide_units(units: &Vec<(UnitEnum, Unit)>, p: &Vector2, s: &Vector2) -> Vec<usize> {
+fn collide_units(units: &Vec<Unit>, p: &Vector2, s: &Vector2) -> Vec<usize> {
     let mut out: Vec<usize> = vec![];
-    for (i, (u_enum, u)) in units.iter().enumerate() {
-        if collide_rect(&Rect { x: p.x, y: p.y, w: s.x, h: s.y }, &Rect { x: u.pos.x, y: u.pos.y, w: u_enum.size().x, h: u_enum.size().y}) {
+    for (i, u) in units.iter().enumerate() {
+        if (Rect { x: p.x, y: p.y, w: s.x, h: s.y }).collide(&Rect { x: u.pos.x, y: u.pos.y, w: u.type_.size().x, h: u.type_.size().y }) {
             out.push(i);
         }
     }
@@ -209,9 +131,9 @@ fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vec
         !collide_units(&game_state.other_units, &spawn_pos[player_id as usize], t.size()).is_empty() {
         None
     } else {
-        let spawn_command = Some(GameCommand::Spawn(t, Unit { player_id: player_id, pos: spawn_pos[player_id as usize], target: spawn_pos[player_id as usize], cooldown: 0 }));
+        let spawn_command = Some(GameCommand::Spawn(Unit { type_: t, player_id: player_id, pos: spawn_pos[player_id as usize], target: spawn_pos[player_id as usize], cooldown: 0 }));
         if let UnitEnum::Interceptor(_) = t {
-            if game_state.my_units.iter().filter(|(tt, _)| if let UnitEnum::Interceptor(_) = tt { true } else { false }).count() >= MAX_INTERCEPTORS {
+            if game_state.my_units.iter().filter(|u| if let UnitEnum::Interceptor(_) = u.type_ { true } else { false }).count() >= MAX_INTERCEPTORS {
                 None
             } else {
                 spawn_command
@@ -222,7 +144,7 @@ fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vec
     }
 }
 
-fn selected_units(game_state: &GameState) -> Vec<(usize, (UnitEnum, Unit))> {
+fn selected_units(game_state: &GameState) -> Vec<(usize, Unit)> {
     let mut out = vec![];
     for s in &game_state.selection {
         if let Selection::Unit(u_id) = s {
@@ -234,15 +156,15 @@ fn selected_units(game_state: &GameState) -> Vec<(usize, (UnitEnum, Unit))> {
     out
 }
 
-fn move_units(units: &mut Vec<(UnitEnum, Unit)>) {
-    let moved: Vec<_> = units.iter().map(|unit| (unit.0, Unit { pos: move_(unit.1, unit.0.speed()), ..unit.1 })).collect();
+fn move_units(units: &mut Vec<Unit>) {
+    let moved: Vec<_> = units.iter().map(|unit| Unit { pos: move_(*unit, unit.type_.speed()), ..*unit }).collect();
     for i in 0..moved.len() {
         let mut collided = false;
         for j in 0..moved.len() {
             if i == j {
                 continue;
             }
-            if collide_rect(&unit_rect(moved[i].0, moved[i].1), &unit_rect(moved[j].0, moved[j].1)) {
+            if moved[i].rect().collide(&moved[j].rect()) {
                 collided = true;
                 break;
             }
@@ -250,7 +172,7 @@ fn move_units(units: &mut Vec<(UnitEnum, Unit)>) {
         if !collided {
             units[i] = moved[i];
         } else {
-            units[i].1.target = units[i].1.pos;
+            units[i].target = units[i].pos;
         }
     }
 }
@@ -259,12 +181,12 @@ fn reap(game_state: &mut GameState) {
     let mut out = HashSet::new();
     for s in &game_state.selection {
         if let Selection::Unit(selection_uid) = s {
-            match game_state.my_units[*selection_uid] {
-                (UnitEnum::Dead, _) => {}
+            match game_state.my_units[*selection_uid].type_ {
+                UnitEnum::Dead => {}
                 _ => {
                     let mut count_dead = 0;
                     for i in 0..*selection_uid {
-                        if let (UnitEnum::Dead, _) = game_state.my_units[i] {
+                        if let UnitEnum::Dead = game_state.my_units[i].type_ {
                             count_dead += 1;
                         }
                     }
@@ -276,11 +198,7 @@ fn reap(game_state: &mut GameState) {
         }
     }
     game_state.selection = out;
-
-    game_state.my_units.retain(|(t, _)| match t {
-        UnitEnum::Dead => false,
-        _ => true
-    });
+    game_state.my_units.retain(|u| u.type_ != UnitEnum::Dead);
 }
 
 fn main() -> std::io::Result<()> {
@@ -420,8 +338,8 @@ fn main() -> std::io::Result<()> {
                 };
 
                 if rl.is_mouse_button_pressed(MouseButton::MOUSE_RIGHT_BUTTON) && unsent_pkt.len() < max_input_queue {
-                    for (u_id, (t, _)) in selected_units(&game_state) {
-                        unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: u_id, target: rl.get_mouse_position() - t.size().scale_by(0.5f32) }));
+                    for (u_id, u) in selected_units(&game_state) {
+                        unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: u_id, target: rl.get_mouse_position() - u.type_.size().scale_by(0.5f32) }));
                     }
                 }
 
@@ -434,7 +352,7 @@ fn main() -> std::io::Result<()> {
                         Some(k) => {
                             match k {
                                 KeyboardKey::KEY_H => { 
-                                    for (u_id, (_, u)) in selected_units(&game_state) { 
+                                    for (u_id, u) in selected_units(&game_state) { 
                                         unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: u_id, target: u.pos })); 
                                     }
                                 },
@@ -444,8 +362,8 @@ fn main() -> std::io::Result<()> {
                                 KeyboardKey::KEY_ONE => game_state.selection = HashSet::from([Selection::Ship]),
                                 KeyboardKey::KEY_TWO => game_state.selection = HashSet::from([Selection::Station]),
                                 KeyboardKey::KEY_SPACE => {
-                                    for (u_id, (t, u)) in selected_units(&game_state) {
-                                        if let UnitEnum::Interceptor(_) = t {
+                                    for (u_id, u) in selected_units(&game_state) {
+                                        if let UnitEnum::Interceptor(_) = u.type_ {
                                             if u.cooldown <= 0 {
                                                 unsent_pkt.push(GameCommand::Intercept(InterceptCommand { u_id: u_id, pos: u.pos + UnitEnum::Interceptor(0).size().scale_by(0.5f32) }));
                                             }
@@ -534,28 +452,28 @@ fn main() -> std::io::Result<()> {
 
         let mut cds = vec![];
         let mut exps = vec![];
-        for (i, (t, u)) in game_state.my_units.iter().chain(game_state.other_units.iter()).enumerate() {
-            let c = if u.player_id == 0 { t.p0_colors() } else { t.p1_colors() };
-            match t {
+        for (i, u) in game_state.my_units.iter().chain(game_state.other_units.iter()).enumerate() {
+            let c = if u.player_id == 0 { u.type_.p0_colors() } else { u.type_.p1_colors() };
+            match u.type_ {
                 UnitEnum::Interceptor(_) => {
-                    let cen = u.pos + t.size().scale_by(0.5f32);
-                    d.draw_circle(cen.x.round() as i32, cen.y.round() as i32, t.size().x/2f32, c);
+                    let cen = u.pos + u.type_.size().scale_by(0.5f32);
+                    d.draw_circle(cen.x.round() as i32, cen.y.round() as i32, u.type_.size().x/2f32, c);
                 },
-                UnitEnum::MessageBox => d.draw_rectangle_v(u.pos, t.size(), c),
+                UnitEnum::MessageBox => d.draw_rectangle_v(u.pos, u.type_.size(), c),
                 _ => {}
             }
 
             for s in &game_state.selection {
                 match s {
                     Selection::Unit(u_id) if *u_id == i => {
-                        match t {
+                        match u.type_ {
                             UnitEnum::Interceptor(e) => {
-                                let cen = u.pos + t.size().scale_by(0.5f32);
-                                d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, t.size().x/2f32, Color::BLACK);
+                                let cen = u.pos + u.type_.size().scale_by(0.5f32);
+                                d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.type_.size().x/2f32, Color::BLACK);
                                 exps.push(e);
                             },
                             UnitEnum::MessageBox => {
-                                d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, t.size().x.round() as i32, t.size().y.round() as i32, Color::BLACK)
+                                d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, u.type_.size().x.round() as i32, u.type_.size().y.round() as i32, Color::BLACK)
                             },
                             _ => {}
                         }
@@ -593,7 +511,7 @@ fn main() -> std::io::Result<()> {
             d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::GREEN)
         }
 
-        d.draw_text(&state.to_string(), 20, 20, 20, Color::BLACK);
+        d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
         d.draw_text(&fps.to_string(), 20, 40, 20, Color::BLACK);
         d.draw_text(&format!("{}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, 100, 20, Color::BLACK);
         if let Some(end_state) = ended {

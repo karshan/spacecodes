@@ -3,9 +3,10 @@
 extern crate serde_derive;
 
 use std::collections::HashSet;
-
 use raylib::prelude::{Vector2,Color};
-// use serde::{Deserialize, Serialize};
+
+pub mod shapes;
+use shapes::*;
 
 #[derive(Default)]
 pub struct SeqState {
@@ -44,8 +45,9 @@ pub enum Selection {
 
 #[derive(Clone)]
 pub struct GameState {
-    pub my_units: Vec<(UnitEnum, Unit)>,  // FIXME switch to HashMap for units so deletion doesn't mess up selection
-    pub other_units: Vec<(UnitEnum, Unit)>,
+    // FIXME switch to one collection for my+other units so order of operations is the same on all clients
+    pub my_units: Vec<Unit>,
+    pub other_units: Vec<Unit>,
     pub selection: HashSet<Selection>,
     pub fuel: [i32; 2],
     pub intercepted: [u8; 2],
@@ -60,12 +62,25 @@ struct Vector2Def {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Unit {
+    pub type_: UnitEnum,
     pub player_id: usize,
     #[serde(with = "Vector2Def")]
     pub pos: Vector2,
     #[serde(with = "Vector2Def")]
     pub target: Vector2,
     pub cooldown: i32,
+}
+
+impl Unit {
+    pub fn rect(self: &Self) -> Rect<i32> {
+         // TODO we want to round here the same way opengl does when drawing to the screen.
+        Rect { 
+            x: self.pos.x.round() as i32,
+            y: self.pos.y.round() as i32, 
+            w: self.type_.size().x.round() as i32,
+            h: self.type_.size().y.round() as i32
+        }
+    }
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
@@ -134,7 +149,7 @@ pub struct InterceptCommand {
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum GameCommand {
     Move(MoveCommand),
-    Spawn(UnitEnum, Unit),
+    Spawn(Unit),
     Intercept(InterceptCommand),
 }
 
