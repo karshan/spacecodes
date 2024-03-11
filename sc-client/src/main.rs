@@ -281,17 +281,16 @@ fn selected_units(game_state: &GameState) -> Vec<(usize, Unit)> {
 fn move_units(units: &mut Vec<Unit>) {
     let moved: Vec<_> = units.iter().cloned().map(|unit| Unit { pos: move_unit(unit.clone(), unit.type_.speed()), ..unit }).collect();
     for i in 0..moved.len() {
-        let mut collided = false;
+        let mut collided = vec![];
         for j in 0..moved.len() {
             if i == j {
                 continue;
             }
             if moved[i].rect().collide(&moved[j].rect()) {
-                collided = true;
-                break;
+                collided.push(moved[j].clone());
             }
         }
-        if !collided {
+        if collided.is_empty() {
             units[i] = moved[i].clone();
             if !units[i].path.is_empty() {
                 let path_target = units[i].path[units[i].path.len() - 1];
@@ -300,7 +299,15 @@ fn move_units(units: &mut Vec<Unit>) {
                 }
             }
         } else {
-            units[i].target = units[i].pos;
+            collided.push(moved[i].clone());
+            let num_collided = collided.len();
+            let mut sum = Vector2::zero();
+            for c in collided {
+                sum += c.pos;
+            }
+            let center = sum.scale_by(1f32/(num_collided as f32));
+            let pushed_pos = units[i].pos + (units[i].pos - center).normalized().scale_by(units[i].type_.speed());
+            units[i].path.push((pushed_pos.x, pushed_pos.y));
         }
     }
 }
