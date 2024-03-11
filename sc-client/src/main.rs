@@ -624,7 +624,7 @@ fn main() -> std::io::Result<()> {
 
         let mut cds = vec![];
         let mut exps = vec![];
-        for (i, u) in game_state.my_units.iter().chain(game_state.other_units.iter()).enumerate() {
+        for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
             let c = if u.player_id == 0 { u.type_.p0_colors() } else { u.type_.p1_colors() };
             match u.type_ {
                 UnitEnum::Interceptor(_) => {
@@ -634,37 +634,49 @@ fn main() -> std::io::Result<()> {
                 UnitEnum::MessageBox => d.draw_rectangle_v(u.pos, u.type_.size(), c),
                 _ => {}
             }
-
-            for s in &game_state.selection {
-                match s {
-                    Selection::Unit(u_id) if *u_id == i => {
-                        match u.type_ {
-                            UnitEnum::Interceptor(e) => {
-                                let cen = u.pos + u.type_.size().scale_by(0.5f32);
-                                d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.type_.size().x/2f32, Color::BLACK);
-                                exps.push(e);
-                            },
-                            UnitEnum::MessageBox => {
-                                d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, u.type_.size().x.round() as i32, u.type_.size().y.round() as i32, Color::BLACK)
-                            },
-                            _ => {}
-                        }
-                        cds.push(u.cooldown);
-                    },
-                    Selection::Ship => {
-                        // FIXME need to be able to lookup ship/station rects
-                        let rect = &GAME_MAP[1 + p_id*2].1;
-                        d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, Color::BLACK)
-                    },
-                    Selection::Station => {
-                        // FIXME need to be able to lookup ship/station rects
-                        let rect = &GAME_MAP[2 + p_id*2].1;
-                        d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, Color::BLACK)
-                    },
-                    Selection::Unit(_) => {}
-                }
-            }   
         }
+
+        for s in &game_state.selection {
+            match s {
+                Selection::Unit(u_id) => {
+                    let u = &game_state.my_units[*u_id];
+                    match u.type_ {
+                        UnitEnum::Interceptor(e) => {
+                            let cen = u.pos + u.type_.size().scale_by(0.5f32);
+                            d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.type_.size().x/2f32, Color::BLACK);
+                            exps.push(e);
+                        },
+                        UnitEnum::MessageBox => {
+                            d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, u.type_.size().x.round() as i32, u.type_.size().y.round() as i32, Color::BLACK)
+                        },
+                        _ => {}
+                    }
+                    if !u.path.is_empty() {
+                        let mut p = Vector2 { x: u.path[0].0, y: u.path[0].1 } + u.type_.size().scale_by(0.5f32);
+                        let col = rcolor(0, 255, 0, 100);
+                        for i in 1..u.path.len() {
+                            let next_p = Vector2 { x: u.path[i].0, y: u.path[i].1 } + u.type_.size().scale_by(0.5f32);
+                            d.draw_line_v(p, next_p, col);
+                            p = next_p;
+                        }
+                        let last_p = u.pos + u.type_.size().scale_by(0.5f32);
+                        d.draw_line_v(p, last_p, col);
+                    }
+                    cds.push(u.cooldown);
+                },
+                Selection::Ship => {
+                    // FIXME need to be able to lookup ship/station rects
+                    let rect = &GAME_MAP[1 + p_id*2].1;
+                    d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, Color::BLACK)
+                },
+                Selection::Station => {
+                    // FIXME need to be able to lookup ship/station rects
+                    let rect = &GAME_MAP[2 + p_id*2].1;
+                    d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, Color::BLACK)
+                },
+            }
+        }   
+
         if !cds.is_empty() {
             d.draw_text(&format!("CD: {}", cds.iter().min().unwrap()), 20, 60, 20, Color::BLACK);
         }
