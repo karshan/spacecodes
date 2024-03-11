@@ -1,4 +1,5 @@
-use num_traits::Num;
+use num_traits::{AsPrimitive, Num};
+use raylib::prelude::Vector2;
 
 pub struct Rect<T: Num> {
     pub x: T,
@@ -7,7 +8,7 @@ pub struct Rect<T: Num> {
     pub h: T,
 }
 
-impl<T: Num + PartialOrd + Copy> Rect<T> {
+impl<T: Num + PartialOrd + Copy + AsPrimitive<f32>> Rect<T> {
     pub fn contains(self: &Rect<T>, child: &Rect<T>) -> bool {
         child.x >= self.x && child.x + child.w <= self.x + self.w &&
             child.y >= self.y && child.y + child.h <= self.y + self.h
@@ -23,5 +24,12 @@ impl<T: Num + PartialOrd + Copy> Rect<T> {
         let ll = other.x;
         let rr = ll + other.w;
         !(b < tt || t > bb || l > rr || r < ll) 
+    }
+
+    pub fn lines(self: &Rect<T>) -> [[Vector2; 2]; 4] {
+        [[Vector2 { x: self.x.as_(), y: self.y.as_() }, Vector2 { x: (self.x + self.w).as_(), y: self.y.as_() }], // top
+        [Vector2 { x: self.x.as_(), y: self.y.as_() }, Vector2 { x: self.x.as_(), y: (self.y + self.h).as_() }], // left
+        [Vector2 { x: self.x.as_(), y: (self.y + self.h).as_() }, Vector2 { x: (self.x + self.w).as_(), y: (self.y + self.h).as_() }], // bottom
+        [Vector2 { x: (self.x + self.w).as_(), y: self.y.as_() }, Vector2 { x: (self.x + self.w).as_(), y: (self.y + self.h).as_() }]] // right
     }
 }

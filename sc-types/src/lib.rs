@@ -60,7 +60,7 @@ struct Vector2Def {
     pub y: f32,
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Unit {
     pub type_: UnitEnum,
     pub player_id: usize,
@@ -68,6 +68,7 @@ pub struct Unit {
     pub pos: Vector2,
     #[serde(with = "Vector2Def")]
     pub target: Vector2,
+    pub path: Vec<(f32, f32)>,
     pub cooldown: i32,
 }
 
@@ -147,9 +148,17 @@ pub struct InterceptCommand {
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub struct SpawnCommand {
+    pub unit_type: UnitEnum,
+    #[serde(with = "Vector2Def")]
+    pub spawn_pos: Vector2,
+    pub player_id: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GameCommand {
     Move(MoveCommand),
-    Spawn(Unit),
+    Spawn(SpawnCommand),
     Intercept(InterceptCommand),
 }
 

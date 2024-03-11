@@ -83,7 +83,7 @@ fn main() -> io::Result<()> {
                         ServerState::Ended(_) => {},
                     }
                 },
-                ClientPkt::Ended { seq, ack, frame } => {
+                ClientPkt::Ended { seq, ack, frame: _ } => {
                     let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
                     r_seq_state.recv(seq, ack);
                     match state {

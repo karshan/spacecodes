@@ -38,3 +38,15 @@ pub static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
         w: 70, h: 70
     }),
 ];
+
+pub static P0_BLOCKED: [Rect<i32>; 3] = [
+    Rect { x: 328, y: 200, w: 149, h: 368 },
+    Rect { x: 477, y: 270, w: 70, h: 228 },
+    Rect { x: 547, y: 200, w: 149, h: 368 }
+];
+
+pub static P1_BLOCKED: [Rect<i32>; 3] = [
+    Rect { x: 328, y: 200, w: 368, h: 149 },
+    Rect { x: 398, y: 349, w: 228, h: 70 },
+    Rect { x: 328, y: 419, w: 368, h: 149 }
+];

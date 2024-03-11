@@ -2,10 +2,12 @@ use std::collections::{HashMap, HashSet};
 use std::cmp::{min, max};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
+use petgraph::algo::astar;
 use raylib::prelude::*;
 use sc_types::*;
 use sc_types::shapes::*;
 extern crate rmp_serde as rmps;
+use petgraph::{Graph, Undirected};
 
 mod util;
 mod constants;
@@ -48,32 +50,126 @@ impl FrameState {
     }
 }
 
-fn move_(unit: Unit, speed: f32) -> Vector2 {
-    let new_pos = if (unit.target - unit.pos).length_sqr() < speed * speed {
-            unit.target
-        } else {
-            unit.pos + (unit.target - unit.pos).normalized().scale_by(speed)
-        };
-    let ur = Rect { x: new_pos.x.round() as i32, y: new_pos.y.round() as i32, w: 20, h: 20 };
-    let play_area = Rect { x: 0, y: 0, w: 1024, h: 768 };
-    let mut is_safe = false;
-    let mut is_blocked = false;
-    for (t, r) in &GAME_MAP {
-        let safe_area = match t {
-            AreaEnum::P0Spawn => unit.player_id == 0,
-            AreaEnum::P0Station => unit.player_id == 0,
-            AreaEnum::P1Spawn => unit.player_id == 1,
-            AreaEnum::P1Station => unit.player_id == 1,
-            _ => false
-        };
-        if safe_area && r.collide(&ur) {
-            is_safe = true;
+fn path_collides(rects: &[Rect<i32>], offsets: [Vector2; 4], pos: Vector2, target: Vector2) -> bool {
+    let mut collided = false;
+    for r in rects {
+        for l in r.lines() {
+            for o in offsets {
+                if let Some(_) = raylib::check_collision_lines(pos + o, target + o, l[0], l[1]) {
+                    collided = true;
+                    break;
+                }
+            }
+            if collided { break; }
         }
-        if *t == AreaEnum::Blocked && r.collide(&ur) {
-            is_blocked = true;
+        if collided { break; }
+    }
+    collided
+}
+
+fn base_graph(unit_type: UnitEnum) -> Graph<Vector2, f32, Undirected> {
+    let mut g = Graph::<Vector2, f32, Undirected>::new_undirected();
+    let blocked = &GAME_MAP[0].1;
+    let sp0 = &GAME_MAP[1].1;
+    let st0 = &GAME_MAP[2].1;
+    let sp1 = &GAME_MAP[3].1;
+    let st1 = &GAME_MAP[4].1;
+    /*
+     *   n0--sp00--sp01--n3
+     *    |              |
+     *   st10           sp10
+     *    |              |
+     *   st11           sp11
+     *    |              |
+     *   n1--st00--st01--n2
+     */
+    let n0 = g.add_node(Vector2 { x: blocked.x as f32, y: blocked.y as f32 } - *unit_type.size() - Vector2::one());
+    let n1 = g.add_node(Vector2 { x: blocked.x as f32, y: (blocked.y + blocked.h) as f32 } + Vector2 { x: -unit_type.size().x - 1f32, y: 1f32 });
+    let n2 = g.add_node(Vector2 { x: (blocked.x + blocked.w) as f32, y: (blocked.y + blocked.h) as f32 } + Vector2::one());
+    let n3 = g.add_node(Vector2 { x: (blocked.x + blocked.w) as f32, y: blocked.y as f32 } + Vector2 { x: 1f32, y: -unit_type.size().y - 1f32 });
+    let sp00 = g.add_node(Vector2 { x: sp0.x as f32, y: sp0.y as f32 } + Vector2 { x: 1f32, y: -unit_type.size().y - 1f32 });
+    let sp01 = g.add_node(Vector2 { x: (sp0.x + sp0.w) as f32, y: sp0.y as f32 } - *unit_type.size() - Vector2::one());
+    let st00 = g.add_node(Vector2 { x: st0.x as f32, y: (st0.y + st0.h) as f32 } + Vector2::one());
+    let st01 = g.add_node(Vector2 { x: (st0.x + st0.w) as f32, y: (st0.y + st0.h) as f32 } + Vector2 { x: -unit_type.size().x - 1f32, y: 1f32 });
+    let sp10 = g.add_node(Vector2 { x: (sp1.x + sp1.w) as f32, y: sp1.y as f32 } + Vector2::one());
+    let sp11 = g.add_node(Vector2 { x: (sp1.x + sp1.w) as f32, y: (sp1.y + sp1.h) as f32 } + Vector2 { x: 1f32, y: -unit_type.size().y - 1f32 });
+    let st10 = g.add_node(Vector2 { x: st1.x as f32, y: st1.y as f32 } + Vector2 { x: -unit_type.size().x - 1f32, y: 1f32 });
+    let st11 = g.add_node(Vector2 { x: st1.x as f32, y: (st1.y + st1.h) as f32 } - *unit_type.size() - Vector2::one());
+    g.add_edge(n0, sp00, (g[n0] - g[sp00]).length());
+    g.add_edge(sp00, sp01, (g[sp00] - g[sp01]).length());
+    g.add_edge(sp01, n3, (g[sp01] - g[n3]).length());
+    g.add_edge(n1, st00, (g[n1] - g[st00]).length());
+    g.add_edge(st00, st01, (g[st00] - g[st01]).length());
+    g.add_edge(st01, n2, (g[st01] - g[n2]).length());
+    g.add_edge(n2, sp11, (g[n2] - g[sp11]).length());
+    g.add_edge(n3, sp10, (g[n3] - g[sp10]).length());
+    g.add_edge(sp10, sp11, (g[sp10] - g[sp11]).length());
+    g.add_edge(n0, st10, (g[n0] - g[st10]).length());
+    g.add_edge(st10, st11, (g[st10] - g[st11]).length());
+    g.add_edge(st11, n1, (g[st11] - g[n1]).length());
+    g
+}
+
+fn find_paths(units: &mut Vec<Unit>) {
+    for u in units {
+        if u.path.len() > 0 {
+            continue;
+        }
+
+        let offsets = [ Vector2::zero(), *u.type_.size(), Vector2 { x: u.type_.size().x, y: 0f32 }, Vector2 { x: 0f32, y: u.type_.size().y } ];
+        let rects = if u.player_id == 0 { &P0_BLOCKED } else { &P1_BLOCKED };
+        
+        if !path_collides(rects, offsets, u.pos, u.target) {
+            u.path.push((u.target.x, u.target.y));
+        } else {
+            let mut g = base_graph(u.type_);
+            let start_node = g.add_node(u.pos);
+            for n in g.node_indices() {
+                if n == start_node { continue; }
+                if !path_collides(rects, offsets, u.pos, g[n]) {
+                    g.add_edge(n, start_node, (g[n] - u.pos).length());
+                }
+            }
+            let end_node = g.add_node(u.target);
+            for n in g.node_indices() {
+                if n == start_node || n == end_node { continue; }
+                if !path_collides(rects, offsets, u.target, g[n]) {
+                    g.add_edge(n, end_node, (g[n] - u.target).length());
+                }
+            }
+            let path = astar(&g, start_node, |n| n == end_node, |e| *e.weight(), |n| (g[n] - u.target).length());
+            match path {
+                None => {
+                    u.path = vec![(u.target.x, u.target.y)]
+                },
+                Some(mut p) => {
+                    p.1.reverse();
+                    u.path = p.1.iter().map(|n| (g[*n].x, g[*n].y)).collect();
+                }
+            }       
         }
     }
-    if !play_area.contains(&ur) || (!is_safe && is_blocked) {
+}
+
+fn move_unit(unit: Unit, speed: f32) -> Vector2 {
+    if unit.path.is_empty() {
+        return unit.pos;
+    }
+    let target = Vector2 { x: unit.path[unit.path.len() - 1].0, y: unit.path[unit.path.len() - 1].1 };
+    let new_pos = if (target - unit.pos).length_sqr() < speed * speed {
+            target
+        } else {
+            unit.pos + (target - unit.pos).normalized().scale_by(speed)
+        };
+    let new_unit_rect = (Unit { pos: new_pos, ..unit.clone() }).rect();
+    let play_area = Rect { x: 0, y: 0, w: 1024, h: 768 };
+    let blocked_rects = if unit.player_id == 0 { &P0_BLOCKED } else { &P1_BLOCKED };
+    for r in blocked_rects {
+        if new_unit_rect.collide(r) {
+            return unit.pos;
+        }
+    }
+    if !play_area.contains(&new_unit_rect) {
         unit.pos
     } else {
         new_pos
@@ -84,11 +180,11 @@ fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<Unit>, updates: &[G
     for u in updates {
         match u {
             GameCommand::Move(MoveCommand { u_id, target }) => {
-                let u = units[*u_id];
-                units[*u_id] = Unit { target: *target, ..u };
+                units[*u_id].target = *target;
+                units[*u_id].path = vec![];
             },
-            GameCommand::Spawn(u) => {
-                units.push(*u);
+            GameCommand::Spawn(SpawnCommand { unit_type, spawn_pos, player_id }) => {
+                units.push(Unit { type_: *unit_type, player_id: *player_id, pos: *spawn_pos, target: *spawn_pos, path: vec![], cooldown: 0 });
             },
             GameCommand::Intercept(InterceptCommand { u_id, pos }) => {
                 units[*u_id].cooldown = UnitEnum::Interceptor(0).cooldown();
@@ -157,7 +253,7 @@ fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vec
         !collide_units(&game_state.other_units, &spawn_pos[player_id as usize], t.size()).is_empty() {
         None
     } else {
-        let spawn_command = Some(GameCommand::Spawn(Unit { type_: t, player_id: player_id, pos: spawn_pos[player_id as usize], target: spawn_pos[player_id as usize], cooldown: 0 }));
+        let spawn_command = Some(GameCommand::Spawn(SpawnCommand { unit_type: t, spawn_pos: spawn_pos[player_id as usize], player_id: player_id }));
         if let UnitEnum::Interceptor(_) = t {
             if game_state.my_units.iter().filter(|u| if let UnitEnum::Interceptor(_) = u.type_ { true } else { false }).count() >= MAX_INTERCEPTORS {
                 None
@@ -175,7 +271,7 @@ fn selected_units(game_state: &GameState) -> Vec<(usize, Unit)> {
     for s in &game_state.selection {
         if let Selection::Unit(u_id) = s {
             if *u_id < game_state.my_units.len() {
-                out.push((*u_id, game_state.my_units[*u_id]))
+                out.push((*u_id, game_state.my_units[*u_id].clone()))
             }
         }
     }
@@ -183,7 +279,7 @@ fn selected_units(game_state: &GameState) -> Vec<(usize, Unit)> {
 }
 
 fn move_units(units: &mut Vec<Unit>) {
-    let moved: Vec<_> = units.iter().map(|unit| Unit { pos: move_(*unit, unit.type_.speed()), ..*unit }).collect();
+    let moved: Vec<_> = units.iter().cloned().map(|unit| Unit { pos: move_unit(unit.clone(), unit.type_.speed()), ..unit }).collect();
     for i in 0..moved.len() {
         let mut collided = false;
         for j in 0..moved.len() {
@@ -196,7 +292,13 @@ fn move_units(units: &mut Vec<Unit>) {
             }
         }
         if !collided {
-            units[i] = moved[i];
+            units[i] = moved[i].clone();
+            if !units[i].path.is_empty() {
+                let path_target = units[i].path[units[i].path.len() - 1];
+                if (Vector2 { x: path_target.0, y: path_target.1 }) == units[i].pos {
+                    units[i].path.pop();
+                }
+            }
         } else {
             units[i].target = units[i].pos;
         }
@@ -251,8 +353,8 @@ fn main() -> std::io::Result<()> {
         (AreaEnum::P1Station, Color::from_hex("1B4332").unwrap()),
         (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
     ]);
-    let msg_spawn_pos = [Vector2 { x: 502f32, y: 250f32 }, Vector2 { x: 626f32, y: 374f32 }];
-    let int_spawn_pos = [Vector2 { x: 502f32, y: 498f32 }, Vector2 { x: 378f32, y: 374f32 }];
+    let msg_spawn_pos = [Vector2 { x: 502f32, y: 249f32 }, Vector2 { x: 627f32, y: 374f32 }];
+    let int_spawn_pos = [Vector2 { x: 502f32, y: 499f32 }, Vector2 { x: 377f32, y: 374f32 }];
 
 
     let args: Vec<String> = env::args().collect();
@@ -310,7 +412,7 @@ fn main() -> std::io::Result<()> {
                 let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
                 match resp {
                     None => ClientState::ExpectWelcome,
-                    Some(ServerEnum::Welcome { handshake_start_time, player_id }) => {
+                    Some(ServerEnum::Welcome { handshake_start_time: _, player_id }) => {
                         p_id = player_id;
                         ClientState::Waiting
                     },
@@ -344,7 +446,7 @@ fn main() -> std::io::Result<()> {
                     let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
                     match resp {
                         None => {},
-                        Some(ServerEnum::UpdateOtherTarget { updates, frame }) => {
+                        Some(ServerEnum::UpdateOtherTarget { updates, frame: _ }) => {
                             frame_state.recvd();
                             recvd_pkt = updates;
                         },
@@ -446,9 +548,13 @@ fn main() -> std::io::Result<()> {
                     recvd_pkt = vec![];
                     sent_pkt = vec![];
                     if p_id == 0 {
+                        find_paths(&mut game_state.my_units);
+                        find_paths(&mut game_state.other_units);
                         move_units(&mut game_state.my_units);
                         move_units(&mut game_state.other_units);
                     } else {
+                        find_paths(&mut game_state.other_units);
+                        find_paths(&mut game_state.my_units);
                         move_units(&mut game_state.other_units);
                         move_units(&mut game_state.my_units);
                     }
