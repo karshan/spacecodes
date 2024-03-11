@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::cmp::{min, max};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
-use num_traits::Num;
 use raylib::prelude::*;
 use sc_types::*;
 use sc_types::shapes::*;
+extern crate rmp_serde as rmps;
 
 mod util;
 mod constants;
@@ -20,6 +20,32 @@ enum ClientState {
     Waiting,
     Started,
     Ended(Option<usize>),
+}
+
+#[derive(Eq, PartialEq)]
+enum FrameState {
+    Neither,
+    Sent,
+    Received,
+    Both,
+}
+
+impl FrameState {
+    fn recvd(self: &mut Self) {
+        match self {
+            FrameState::Neither => *self = FrameState::Received,
+            FrameState::Sent => *self = FrameState::Both,
+            _ => {},
+        }
+    }
+
+    fn sent(self: &mut Self) {
+        match self {
+            FrameState::Neither => *self = FrameState::Sent,
+            FrameState::Received => *self = FrameState::Both,
+            _ => {},
+        }
+    }
 }
 
 fn move_(unit: Unit, speed: f32) -> Vector2 {
@@ -201,6 +227,20 @@ fn reap(game_state: &mut GameState) {
     game_state.my_units.retain(|u| u.type_ != UnitEnum::Dead);
 }
 
+fn serialize_state(game_state: &GameState, p_id: usize) -> Result<Vec<u8>, rmps::encode::Error> {
+    let mut v;
+    if p_id == 0 {
+        v = rmp_serde::encode::to_vec(&game_state.my_units)?;
+        v.append(&mut rmp_serde::encode::to_vec(&game_state.other_units)?);
+    } else {
+        v = rmp_serde::encode::to_vec(&game_state.other_units)?;
+        v.append(&mut rmp_serde::encode::to_vec(&game_state.my_units)?);
+    }
+    v.append(&mut rmp_serde::encode::to_vec(&game_state.fuel)?);
+    v.append(&mut rmp_serde::encode::to_vec(&game_state.intercepted)?);
+    Ok(v)
+}
+
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let max_input_queue = 10;
@@ -246,7 +286,10 @@ fn main() -> std::io::Result<()> {
     let mut frame_counter: i64 = 0;
     let mut s_time = 0f64;
     let mut sent_frame = 0;
+    let mut frame_state = FrameState::Neither;
     let mut unsent_pkt = vec![];
+    let mut sent_pkt = vec![];
+    let mut recvd_pkt = vec![];
     let mut animations = vec![];
     let mut drag_select: Option<Vector2> = None;
     let mut ended = None;
@@ -254,7 +297,6 @@ fn main() -> std::io::Result<()> {
     socket.set_nonblocking(true)?;
 
     while !rl.window_should_close() {
-        let mut go = false;
         let mouse_position = rl.get_mouse_position();
         let fps = rl.get_fps();
 
@@ -288,6 +330,7 @@ fn main() -> std::io::Result<()> {
                         ended = None;
                         animations = vec![];
                         drag_select = None;
+                        frame_state = FrameState::Neither;
                         game_state = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), fuel: [START_FUEL; 2], intercepted: [0; 2] };
                         ClientState::Started
                     },
@@ -302,9 +345,8 @@ fn main() -> std::io::Result<()> {
                     match resp {
                         None => {},
                         Some(ServerEnum::UpdateOtherTarget { updates, frame }) => {
-                            apply_updates(&mut game_state.intercepted[(p_id + 1) % 2], &mut game_state.other_units, &updates, &mut game_state.my_units, &mut animations);
-                            reap(&mut game_state);
-                            go = true;
+                            frame_state.recvd();
+                            recvd_pkt = updates;
                         },
                         Some(_) => {
                             panic!("Expected UpdateOtherTarget")
@@ -385,19 +427,43 @@ fn main() -> std::io::Result<()> {
                         frame: frame_counter,
                     })?;
                     seq_state.send();
-
-                    apply_updates(&mut game_state.intercepted[p_id], &mut game_state.my_units, &unsent_pkt, &mut game_state.other_units, &mut animations);
+                    frame_state.sent();
+                    sent_pkt = unsent_pkt;
                     unsent_pkt = vec![];
                     sent_frame += 2;
                 }
 
-                if go || (frame_counter % 2 == 1) {
-                    move_units(&mut game_state.my_units);
-                    move_units(&mut game_state.other_units);
+                if frame_state == FrameState::Both || (frame_counter % 2 == 1) {
+                    if p_id == 0 {
+                        apply_updates(&mut game_state.intercepted[p_id], &mut game_state.my_units, &sent_pkt, &mut game_state.other_units, &mut animations);
+                        apply_updates(&mut game_state.intercepted[(p_id + 1) % 2], &mut game_state.other_units, &recvd_pkt, &mut game_state.my_units, &mut animations);
+                        reap(&mut game_state);
+                    } else {
+                        apply_updates(&mut game_state.intercepted[(p_id + 1) % 2], &mut game_state.other_units, &recvd_pkt, &mut game_state.my_units, &mut animations);
+                        reap(&mut game_state);
+                        apply_updates(&mut game_state.intercepted[p_id], &mut game_state.my_units, &sent_pkt, &mut game_state.other_units, &mut animations);
+                    }
+                    recvd_pkt = vec![];
+                    sent_pkt = vec![];
+                    if p_id == 0 {
+                        move_units(&mut game_state.my_units);
+                        move_units(&mut game_state.other_units);
+                    } else {
+                        move_units(&mut game_state.other_units);
+                        move_units(&mut game_state.my_units);
+                    }
                     add_fuel(&mut game_state, p_id);
                     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
                     tick_cd_expiry(&mut game_state);
                     frame_counter += 1;
+                    frame_state = FrameState::Neither;
+                    socket_send(&socket, &server[0], &ClientPkt::StateHash { 
+                        seq: seq_state.send_seq,
+                        ack: seq_state.send_ack,
+                        hash: crc32fast::hash(&serialize_state(&game_state, p_id).unwrap()),
+                        frame: frame_counter,
+                    })?;
+                    seq_state.send();
                 }
 
                 if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {

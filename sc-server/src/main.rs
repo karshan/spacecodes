@@ -17,6 +17,7 @@ fn main() -> io::Result<()> {
         let socket = UdpSocket::bind("0.0.0.0:8080").await?;
         let mut buf = [0u8; 1024];
         let mut conn_states = HashMap::new();
+        let mut state_hashes = HashMap::new();
         let mut state = ServerState::Waiting;
         let mut instant = Instant::now();
 
@@ -81,7 +82,7 @@ fn main() -> io::Result<()> {
                         ServerState::Waiting => {},
                         ServerState::Ended(_) => {},
                     }
-                }
+                },
                 ClientPkt::Ended { seq, ack, frame } => {
                     let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
                     r_seq_state.recv(seq, ack);
@@ -98,6 +99,16 @@ fn main() -> io::Result<()> {
                         _ => {}
                     }
 
+                },
+                ClientPkt::StateHash { seq, ack, hash, frame } => {
+                    let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
+                    r_seq_state.recv(seq, ack);
+                    if *state_hashes.entry(frame).or_insert(hash) != hash {
+                        println!("Mismatched hashes on frame {}", frame)
+                    }
+                    if frame >= 10 {
+                        state_hashes.remove(&(frame - 10));
+                    }
                 }
             }
 
