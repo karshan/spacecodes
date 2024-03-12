@@ -9,7 +9,7 @@ pub enum AreaEnum {
     Blocked
 }
 
-pub static START_FUEL: i32 = 36000;
+pub static START_FUEL: i32 = 3600;
 pub static FUEL_LOSS: i32 = 1; // per frame
 pub static MSG_FUEL: i32 = 600;
 pub static INTERCEPT_RADIUS: f32 = 40f32;

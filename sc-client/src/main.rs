@@ -203,32 +203,38 @@ fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<Unit>, updates: &[G
     for u in updates {
         match u {
             GameCommand::Move(MoveCommand { u_id, target }) => {
-                units[*u_id].target_type = Target::Move;
-                units[*u_id].target = *target;
-                units[*u_id].path = vec![];
+                if *u_id < units.len() {
+                    units[*u_id].target_type = Target::Move;
+                    units[*u_id].target = *target;
+                    units[*u_id].path = vec![];
+                }
             },
             GameCommand::Blink(MoveCommand { u_id, target }) => {
-                units[*u_id].cooldown = UnitEnum::MessageBox.cooldown();
-                units[*u_id].target_type = Target::Blink;
-                units[*u_id].target = *target;
-                units[*u_id].path = vec![];
+                if *u_id < units.len() {
+                    units[*u_id].cooldown = UnitEnum::MessageBox.cooldown();
+                    units[*u_id].target_type = Target::Blink;
+                    units[*u_id].target = *target;
+                    units[*u_id].path = vec![];
+                }
             },
             GameCommand::Spawn(SpawnCommand { unit_type, spawn_pos, player_id }) => {
                 units.push(Unit { type_: *unit_type, player_id: *player_id, pos: *spawn_pos, target: *spawn_pos, target_type: Target::Move, path: vec![], cooldown: unit_type.cooldown() });
             },
             GameCommand::Intercept(InterceptCommand { u_id, pos }) => {
-                units[*u_id].cooldown = UnitEnum::Interceptor(0).cooldown();
-                animations.push(pos.clone());
-                for unit in other_units.iter_mut() {
-                    match unit.type_ {
-                        UnitEnum::MessageBox => {
-                            let unit_cen = unit.pos + unit.type_.size().scale_by(0.5f32);
-                            if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
-                                unit.type_ = UnitEnum::Dead;
-                                *intercepted_count += 1;
-                            }
-                        },
-                        _ => {}
+                if *u_id < units.len() {
+                    units[*u_id].cooldown = UnitEnum::Interceptor(0).cooldown();
+                    animations.push(pos.clone());
+                    for unit in other_units.iter_mut() {
+                        match unit.type_ {
+                            UnitEnum::MessageBox => {
+                                let unit_cen = unit.pos + unit.type_.size().scale_by(0.5f32);
+                                if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
+                                    unit.type_ = UnitEnum::Dead;
+                                    *intercepted_count += 1;
+                                }
+                            },
+                            _ => {}
+                        }
                     }
                 }
             }
