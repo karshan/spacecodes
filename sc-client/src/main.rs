@@ -447,6 +447,7 @@ fn main() -> std::io::Result<()> {
 
         state = match state {
             ClientState::SendHello => {
+                ended = None;
                 socket_send(&socket, &server[0], &ClientPkt::Hello { seq: seq_state.send_seq, sent_time: rl.get_time() })?;
                 seq_state.send();
                 ClientState::ExpectWelcome
