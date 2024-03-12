@@ -116,7 +116,8 @@ fn find_paths(units: &mut Vec<Unit>) {
             continue;
         }
 
-        if let Target::MoveTarget(target) = u.target {
+        if u.target_type == Target::Move {
+            let target = u.target;
             if target == u.pos { continue; }
             let offsets = [ Vector2::zero(), *u.type_.size(), Vector2 { x: u.type_.size().x, y: 0f32 }, Vector2 { x: 0f32, y: u.type_.size().y } ];
             let rects = if u.player_id == 0 { &P0_BLOCKED } else { &P1_BLOCKED };
@@ -172,11 +173,11 @@ fn collide_with_map(rect: Rect<i32>, player_id: usize) -> bool {
 }
 
 fn move_unit(unit: Unit, speed: f32) -> Vector2 {
-    let new_pos = if let Target::BlinkTarget(b_target) = unit.target {
-            if (b_target - unit.pos).length() < BLINK_RANGE {
-                b_target
+    let new_pos = if unit.target_type == Target::Blink {
+            if (unit.target - unit.pos).length() < BLINK_RANGE {
+                unit.target
             } else {
-                unit.pos + (b_target - unit.pos).normalized().scale_by(BLINK_RANGE)
+                unit.pos + (unit.target - unit.pos).normalized().scale_by(BLINK_RANGE)
             }
         } else {
             if unit.path.is_empty() {
@@ -202,15 +203,18 @@ fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<Unit>, updates: &[G
     for u in updates {
         match u {
             GameCommand::Move(MoveCommand { u_id, target }) => {
-                units[*u_id].target = Target::MoveTarget(*target);
+                units[*u_id].target_type = Target::Move;
+                units[*u_id].target = *target;
                 units[*u_id].path = vec![];
             },
             GameCommand::Blink(MoveCommand { u_id, target }) => {
-                units[*u_id].target = Target::BlinkTarget(*target);
+                units[*u_id].cooldown = UnitEnum::MessageBox.cooldown();
+                units[*u_id].target_type = Target::Blink;
+                units[*u_id].target = *target;
                 units[*u_id].path = vec![];
             },
             GameCommand::Spawn(SpawnCommand { unit_type, spawn_pos, player_id }) => {
-                units.push(Unit { type_: *unit_type, player_id: *player_id, pos: *spawn_pos, target: Target::MoveTarget(*spawn_pos), path: vec![], cooldown: unit_type.cooldown() });
+                units.push(Unit { type_: *unit_type, player_id: *player_id, pos: *spawn_pos, target: *spawn_pos, target_type: Target::Move, path: vec![], cooldown: unit_type.cooldown() });
             },
             GameCommand::Intercept(InterceptCommand { u_id, pos }) => {
                 units[*u_id].cooldown = UnitEnum::Interceptor(0).cooldown();
@@ -305,7 +309,7 @@ fn selected_units(game_state: &GameState) -> Vec<(usize, Unit)> {
 }
 
 fn move_units(units: &mut Vec<Unit>) {
-    let moved: Vec<_> = units.iter().cloned().map(|unit| Unit { pos: move_unit(unit.clone(), unit.type_.speed()), ..unit }).collect();
+    let moved: Vec<_> = units.iter().cloned().map(|unit| Unit { pos: move_unit(unit.clone(), unit.type_.speed()), target_type: Target::Move, ..unit }).collect();
     for i in 0..moved.len() {
         let mut collided = vec![];
         for j in 0..moved.len() {

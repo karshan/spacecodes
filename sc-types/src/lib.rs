@@ -60,12 +60,10 @@ struct Vector2Def {
     pub y: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum Target {
-    #[serde(with = "Vector2Def")]
-    MoveTarget(Vector2),
-    #[serde(with = "Vector2Def")]
-    BlinkTarget(Vector2),
+    Move,
+    Blink,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,7 +72,9 @@ pub struct Unit {
     pub player_id: usize,
     #[serde(with = "Vector2Def")]
     pub pos: Vector2,
-    pub target: Target,
+    pub target_type: Target,
+    #[serde(with = "Vector2Def")]
+    pub target: Vector2,
     pub path: Vec<(f32, f32)>,
     pub cooldown: i32,
 }
