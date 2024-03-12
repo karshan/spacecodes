@@ -61,13 +61,20 @@ struct Vector2Def {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Target {
+    #[serde(with = "Vector2Def")]
+    MoveTarget(Vector2),
+    #[serde(with = "Vector2Def")]
+    BlinkTarget(Vector2),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Unit {
     pub type_: UnitEnum,
     pub player_id: usize,
     #[serde(with = "Vector2Def")]
     pub pos: Vector2,
-    #[serde(with = "Vector2Def")]
-    pub target: Vector2,
+    pub target: Target,
     pub path: Vec<(f32, f32)>,
     pub cooldown: i32,
 }
@@ -111,7 +118,7 @@ impl UnitEnum {
     pub fn cooldown(self: &Self) -> i32 {
         match self {
             UnitEnum::Interceptor(_) => 360,
-            UnitEnum::MessageBox => 0,
+            UnitEnum::MessageBox => 900,
             UnitEnum::Dead => 0,
         }
     }
@@ -158,6 +165,7 @@ pub struct SpawnCommand {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GameCommand {
     Move(MoveCommand),
+    Blink(MoveCommand),
     Spawn(SpawnCommand),
     Intercept(InterceptCommand),
 }

@@ -15,6 +15,7 @@ pub static MSG_FUEL: i32 = 600;
 pub static INTERCEPT_RADIUS: f32 = 40f32;
 pub static INTERCEPTOR_EXPIRY: i32 = 1800;
 pub static MAX_INTERCEPTORS: usize = 4;
+pub static BLINK_RANGE: f32 = 120f32;
 pub static KILLS_TO_WIN: u8 = 10;
 pub static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
     (AreaEnum::Blocked, Rect {
