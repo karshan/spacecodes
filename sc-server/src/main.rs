@@ -58,7 +58,7 @@ fn main() -> io::Result<()> {
                 },
                 ClientPkt::Target { seq, ack, updates, frame } => {
                     let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
-                    r_seq_state.recv(seq, ack);
+                    r_seq_state.recv(seq, ack).map(|e| { println!("recvd target err: {}", e); });
                     match state {
                         ServerState::Started => {
                             for (send_peer, s_seq_state) in conn_states.iter_mut() {
@@ -102,7 +102,7 @@ fn main() -> io::Result<()> {
                 },
                 ClientPkt::StateHash { seq, ack, hash, frame } => {
                     let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
-                    r_seq_state.recv(seq, ack);
+                    r_seq_state.recv(seq, ack).map(|e| { println!("recvd statehash err: {}", e); });
                     if *state_hashes.entry(frame).or_insert(hash) != hash {
                         println!("Mismatched hashes on frame {}", frame)
                     }

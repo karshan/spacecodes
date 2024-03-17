@@ -490,7 +490,10 @@ fn main() -> std::io::Result<()> {
                     let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
                     match resp {
                         None => {},
-                        Some(ServerEnum::UpdateOtherTarget { updates, frame: _ }) => {
+                        Some(ServerEnum::UpdateOtherTarget { updates, frame }) => {
+                            if frame != frame_counter {
+                                panic!("recvd frame {} expected {}", frame, frame_counter);
+                            }
                             frame_state.recvd();
                             recvd_pkt = updates;
                         },

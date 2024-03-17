@@ -17,17 +17,25 @@ pub struct SeqState {
 }
 
 impl SeqState {
-    pub fn recv(&mut self, seq: i32, ack: i32) {
+    pub fn recv(&mut self, seq: i32, ack: i32) -> Option<String> {
+        let mut e1 = None;
+        let mut e2 = None;
         if ack > self.expected_ack {
-            panic!("Expected ack {} got {}", self.expected_ack, ack)
+            e1 = Some(format!("Expected ack {} got {}", self.expected_ack, ack))
         }
 
         if seq != self.expected_seq {
-            panic!("Expected seq {} got {}", self.expected_seq, seq)
+            e2 = Some(format!("Expected seq {} got {}", self.expected_seq, seq))
         }
 
         self.expected_seq = seq + 1;
         self.send_ack = seq;
+        if let Some((mut m1, m2)) = e1.clone().zip(e2.clone()) {
+            m1.push_str(&m2);
+            Some(m1)
+        } else {
+            e1.or(e2)
+        }
     }
 
     pub fn send(&mut self) {
