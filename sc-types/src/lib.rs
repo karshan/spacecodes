@@ -2,7 +2,7 @@
 #[macro_use]
 extern crate serde_derive;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use raylib::prelude::{Vector2,Color};
 
 pub mod shapes;
@@ -181,7 +181,7 @@ pub enum GameCommand {
 #[derive(Deserialize, Serialize)]
 pub enum ClientPkt {
     Hello { seq: i32, sent_time: f64 },
-    Target { seq: i32, ack: i32, updates: Vec<GameCommand>, frame: i64 },
+    Target { seq: i32, ack: i32, updates: VecDeque<(i64, Vec<GameCommand>)>, frame: i64, frame_ack: i64 },
     Ended { seq: i32, ack: i32, frame: i64 },
     StateHash { seq: i32, ack: i32, hash: u32, frame: i64 }
 }
@@ -198,5 +198,5 @@ pub struct ServerPkt {
 pub enum ServerEnum {
     Welcome { handshake_start_time: f64, player_id: usize },
     Start,
-    UpdateOtherTarget { updates: Vec<GameCommand>, frame: i64 }
+    UpdateOtherTarget { updates: VecDeque<(i64, Vec<GameCommand>)>, frame: i64, frame_ack: i64 }
 }

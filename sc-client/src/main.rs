@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::cmp::{min, max};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
@@ -433,8 +433,11 @@ fn main() -> std::io::Result<()> {
     let mut sent_frame = 0;
     let mut frame_state = FrameState::Neither;
     let mut unsent_pkt = vec![];
+    let mut unacked_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
+    let mut future_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut sent_pkt = vec![];
     let mut recvd_pkt = vec![];
+    let mut last_rcvd_pkt = -1;
     let mut animations = vec![];
     let mut drag_select: Option<Vector2> = None;
     let mut ended = None;
@@ -473,6 +476,9 @@ fn main() -> std::io::Result<()> {
                         frame_counter = 0;
                         sent_frame = 0;
                         unsent_pkt = vec![];
+                        unacked_pkts = VecDeque::new();
+                        future_pkts = VecDeque::new();
+                        last_rcvd_pkt = -1;
                         ended = None;
                         animations = vec![];
                         drag_select = None;
@@ -490,12 +496,14 @@ fn main() -> std::io::Result<()> {
                     let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
                     match resp {
                         None => {},
-                        Some(ServerEnum::UpdateOtherTarget { updates, frame }) => {
-                            if frame != frame_counter {
-                                panic!("recvd frame {} expected {}", frame, frame_counter);
-                            }
+                        Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack }) => {
                             frame_state.recvd();
-                            recvd_pkt = updates;
+                            recvd_pkt = updates.iter().chain(future_pkts.iter())
+                                .find(|ps| ps.0 == frame_counter).expect("recvd packet didnt contain frame we were looking for").1.clone();
+                            future_pkts.append(&mut updates.clone());
+                            future_pkts.retain(|ps| ps.0 > frame_counter);
+                            unacked_pkts.retain(|ps| ps.0 > frame_ack);
+                            last_rcvd_pkt = frame;
                         },
                         Some(_) => {
                             panic!("Expected UpdateOtherTarget")
@@ -577,11 +585,13 @@ fn main() -> std::io::Result<()> {
                 }
 
                 if sent_frame <= frame_counter && (frame_counter % 2 == 0) {
+                    unacked_pkts.push_front((frame_counter, unsent_pkt.clone()));
                     socket_send(&socket, &server[0], &ClientPkt::Target { 
                         seq: seq_state.send_seq,
                         ack: seq_state.send_ack,
-                        updates: unsent_pkt.clone(),
+                        updates: unacked_pkts.clone(),
                         frame: frame_counter,
+                        frame_ack: last_rcvd_pkt,
                     })?;
                     seq_state.send();
                     frame_state.sent();
