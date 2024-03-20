@@ -646,16 +646,8 @@ fn main() -> std::io::Result<()> {
         d.draw_text(&format!("{}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, 100, 20, Color::BLACK);
         if let Some(end_state) = ended {
             let end_str = match end_state {
-                Some(winner) => {
-                    if winner == p_id {
-                        "YOU WON"
-                    } else {
-                        "YOU LOST"
-                    }
-                },
-                None => {
-                    "DRAW"
-                }
+                Some(winner) => if winner == p_id { "YOU WON" } else { "YOU LOST" },
+                None => "DRAW",
             };
             d.draw_text(&end_str, 470, 370, 20, Color::BLACK);
         }
