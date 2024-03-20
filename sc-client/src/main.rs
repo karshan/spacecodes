@@ -498,6 +498,9 @@ fn main() -> std::io::Result<()> {
                     match resp {
                         None => {},
                         Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack }) => {
+                            if frame > frame_counter {
+                                println!("out of order packet {}", frame - frame_counter);
+                            }
                             frame_state.recvd();
                             recvd_pkt = updates.iter().chain(future_pkts.iter())
                                 .find(|ps| ps.0 == frame_counter).expect("recvd packet didnt contain frame we were looking for").1.clone();
