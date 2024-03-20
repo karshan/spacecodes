@@ -54,6 +54,14 @@ impl WindowAvg {
         }
     }
 
+    pub fn peek(self: &Self) -> f64 {
+        if self.avg.is_zero() {
+            0f64
+        } else {
+            1000f64/self.avg
+        }
+    }
+
     pub fn sample(self: &mut Self) -> f64 {
         let now = Instant::now();
         let dt = now.duration_since(self.last);
@@ -62,10 +70,6 @@ impl WindowAvg {
         self.avg -= self.history[self.index];
         self.history[self.index] = (dt.as_millis() as f64)/(WINDOW_SIZE as f64);
         self.avg += self.history[self.index];
-        if self.avg.is_zero() {
-            0f64
-        } else {
-            1000f64/self.avg
-        }
+        self.peek()
     }
 }

@@ -769,7 +769,7 @@ fn main() -> std::io::Result<()> {
 
         d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
         d.draw_text(&fps.to_string(), 20, 40, 20, Color::BLACK);
-        d.draw_text(&packets_ps.avg.round().to_string(), 20, 120, 20, Color::BLACK);
+        d.draw_text(&packets_ps.peek().round().to_string(), 60, 40, 20, Color::BLACK);
         d.draw_text(&format!("{}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, 100, 20, Color::BLACK);
         if let Some(end_state) = ended {
             let end_str = match end_state {
