@@ -496,9 +496,18 @@ fn main() -> std::io::Result<()> {
                 if frame_counter % 2 == 0 {
                     let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
                     match resp {
-                        None => {},
+                        None => {
+                            match future_pkts.iter().find(|ps| ps.0 == frame_counter) {
+                                Some(p) => {
+                                    recvd_pkt = p.1.clone();
+                                    future_pkts.retain(|ps| ps.0 > frame_counter);
+                                    frame_state.recvd();
+                                },
+                                None => {}
+                            };
+                        },
                         Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack }) => {
-                            if frame > frame_counter {
+                            if frame != frame_counter {
                                 println!("out of order packet {}", frame - frame_counter);
                             }
                             frame_state.recvd();
