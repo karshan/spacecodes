@@ -1,6 +1,7 @@
 extern crate rmp_serde as rmps;
 
-use std::net::{SocketAddr, UdpSocket};
+use std::{net::{SocketAddr, UdpSocket}, time::Instant};
+use num_traits::Zero;
 use sc_types::{ClientPkt, SeqState, ServerEnum, ServerPkt};
 use std::io;
 
@@ -33,5 +34,38 @@ pub fn socket_send(socket: &UdpSocket, addr: &SocketAddr, pkt: &ClientPkt) -> Re
         Ok(buf) => socket.send_to(&buf, addr),
         Err(e) => panic!("{:?}", e),
     }
-    
+}
+
+static WINDOW_SIZE: usize = 30;
+pub struct WindowAvg {
+    history: [f64; 30],
+    last: Instant,
+    index: usize,
+    pub avg: f64,
+}
+
+impl WindowAvg {
+    pub fn new() -> WindowAvg {
+        WindowAvg {
+            history:[0f64; 30],
+            last: Instant::now(),
+            index: 0,
+            avg: 0f64,
+        }
+    }
+
+    pub fn sample(self: &mut Self) -> f64 {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last);
+        self.last = now;
+        self.index = (self.index + 1) % WINDOW_SIZE;
+        self.avg -= self.history[self.index];
+        self.history[self.index] = (dt.as_millis() as f64)/(WINDOW_SIZE as f64);
+        self.avg += self.history[self.index];
+        if self.avg.is_zero() {
+            0f64
+        } else {
+            1000f64/self.avg
+        }
+    }
 }

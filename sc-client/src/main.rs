@@ -441,6 +441,7 @@ fn main() -> std::io::Result<()> {
     let mut animations = vec![];
     let mut drag_select: Option<Vector2> = None;
     let mut ended = None;
+    let mut packets_ps = WindowAvg::new();
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
 
@@ -598,6 +599,10 @@ fn main() -> std::io::Result<()> {
                     sent_pkt = unsent_pkt;
                     unsent_pkt = vec![];
                     sent_frame += 2;
+                }
+
+                if frame_state == FrameState::Both {
+                    packets_ps.sample();
                 }
 
                 if frame_state == FrameState::Both || (frame_counter % 2 == 1) {
@@ -762,6 +767,7 @@ fn main() -> std::io::Result<()> {
 
         d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
         d.draw_text(&fps.to_string(), 20, 40, 20, Color::BLACK);
+        d.draw_text(&packets_ps.avg.round().to_string(), 20, 120, 20, Color::BLACK);
         d.draw_text(&format!("{}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, 100, 20, Color::BLACK);
         if let Some(end_state) = ended {
             let end_str = match end_state {
