@@ -635,8 +635,8 @@ fn main() -> std::io::Result<()> {
                             hash: crc32fast::hash(&serialize_state(&game_state, p_id).unwrap()),
                             frame: frame_counter,
                         })?;
+                        seq_state.send();
                     }
-                    seq_state.send();
                 }
 
                 if frame_state == FrameState::Both {
