@@ -601,10 +601,6 @@ fn main() -> std::io::Result<()> {
                     sent_frame += 2;
                 }
 
-                if frame_state == FrameState::Both {
-                    packets_ps.sample();
-                }
-
                 if frame_state == FrameState::Both || (frame_counter % 2 == 1) {
                     if p_id == 0 {
                         apply_updates(&mut game_state.intercepted[p_id], &mut game_state.my_units, &sent_pkt, &mut game_state.other_units, &mut animations);
@@ -632,14 +628,20 @@ fn main() -> std::io::Result<()> {
                     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
                     tick_cd_expiry(&mut game_state);
                     frame_counter += 1;
-                    frame_state = FrameState::Neither;
-                    socket_send(&socket, &server[0], &ClientPkt::StateHash { 
-                        seq: seq_state.send_seq,
-                        ack: seq_state.send_ack,
-                        hash: crc32fast::hash(&serialize_state(&game_state, p_id).unwrap()),
-                        frame: frame_counter,
-                    })?;
+                    if frame_counter % 60 == 0 {
+                        socket_send(&socket, &server[0], &ClientPkt::StateHash { 
+                            seq: seq_state.send_seq,
+                            ack: seq_state.send_ack,
+                            hash: crc32fast::hash(&serialize_state(&game_state, p_id).unwrap()),
+                            frame: frame_counter,
+                        })?;
+                    }
                     seq_state.send();
+                }
+
+                if frame_state == FrameState::Both {
+                    packets_ps.sample();
+                    frame_state = FrameState::Neither;
                 }
 
                 if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
