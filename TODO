@@ -1,0 +1,16 @@
+[Features]
+[Easy]
+ - Shift clicking
+ - Right click animation
+ - Blink hotkey + left click
+ - Select ship/station to build units + Unit build time + rally points
+[Medium]
+ - path to closest reasonable point when right click inside an obstacle
+[Hard]
+ - (Group offset movement + Path finding around units) or muta style grouping with no collision until stationary
+
+[Bugs]
+ - Handle multiple dropped packets
+
+[Performance]
+ - No/minumum heap use
