@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 raylib = "3.7.0"
 rmp-serde = "1.1.2"
-serde = "1.0.197"
+serde = { version = "1.0.197", features = ["derive"] }
 serde_derive = "1.0.197"
 num-traits = "0.2.18"
+serde_nested_with = "0.2.5"

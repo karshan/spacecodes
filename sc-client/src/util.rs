@@ -5,7 +5,7 @@ use num_traits::Zero;
 use sc_types::{ClientPkt, SeqState, ServerEnum, ServerPkt};
 use std::io;
 
-pub fn socket_recv(socket: &UdpSocket, expected_addr: &SocketAddr, seq_state: &mut SeqState, s_time: &mut f64) -> Option<ServerEnum> {
+pub fn socket_recv(socket: &UdpSocket, expected_addr: &SocketAddr, seq_state: &mut SeqState) -> Option<ServerEnum> {
     let mut buf = [0u8; 1024];
     match socket.recv_from(&mut buf) {
         Ok((n, addr)) => {
@@ -16,7 +16,6 @@ pub fn socket_recv(socket: &UdpSocket, expected_addr: &SocketAddr, seq_state: &m
             match rmp_serde::decode::from_slice::<ServerPkt>(&buf[..n]) {
                 Ok(pkt) => {
                     seq_state.recv(pkt.seq, pkt.ack);
-                    *s_time = pkt.server_time;
                     Some(pkt.msg)
                 },
                 Err(e) => panic!("{:?}", e)

@@ -3,10 +3,14 @@
 extern crate serde_derive;
 
 use std::collections::{HashSet, VecDeque};
+use constants::MESSAGE_SIZE;
 use raylib::prelude::{Vector2,Color};
 
 pub mod shapes;
+use serde::{Deserialize, Serialize};
+use serde_nested_with::serde_nested;
 use shapes::*;
+pub mod constants;
 
 #[derive(Default)]
 pub struct SeqState {
@@ -53,7 +57,6 @@ pub enum Selection {
 
 #[derive(Clone)]
 pub struct GameState {
-    // FIXME switch to one collection for my+other units so order of operations is the same on all clients
     pub my_units: Vec<Unit>,
     pub other_units: Vec<Unit>,
     pub selection: HashSet<Selection>,
@@ -61,7 +64,7 @@ pub struct GameState {
     pub intercepted: [u8; 2],
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(remote = "Vector2")]
 struct Vector2Def {
     pub x: f32,
@@ -74,16 +77,16 @@ pub enum Target {
     Blink,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_nested]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Unit {
-    pub type_: UnitEnum,
+    pub dead: bool,
     pub player_id: usize,
     #[serde(with = "Vector2Def")]
     pub pos: Vector2,
-    pub target_type: Target,
-    #[serde(with = "Vector2Def")]
-    pub target: Vector2,
-    pub path: Vec<(f32, f32)>,
+    #[serde_nested(sub = "Vector2", serde(with = "Vector2Def"))]
+    pub path: Vec<Vector2>,
+    pub blinking: bool,
     pub cooldown: i32,
 }
 
@@ -93,88 +96,57 @@ impl Unit {
         Rect { 
             x: self.pos.x.round() as i32,
             y: self.pos.y.round() as i32, 
-            w: self.type_.size().x.round() as i32,
-            h: self.type_.size().y.round() as i32
+            w: MESSAGE_SIZE.x.round() as i32,
+            h: MESSAGE_SIZE.y.round() as i32
         }
     }
-}
 
-#[derive(Hash, Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
-pub enum UnitEnum {
-    MessageBox,
-    Interceptor(i32),
-    Dead,
-}
-
-impl UnitEnum {
-    pub fn size(self: &Self) -> &'static Vector2 {
-        match self {
-            UnitEnum::Interceptor(_) => &Vector2 { x: 20f32, y: 20f32 },
-            UnitEnum::MessageBox => &Vector2 { x: 20f32, y: 20f32 },
-            UnitEnum::Dead => &Vector2 { x: 0f32, y: 0f32 },
-        }
+    pub fn size(self: &Self) -> &Vector2 {
+        MESSAGE_SIZE
     }
 
     pub fn speed(self: &Self) -> f32 {
-        match self {
-            UnitEnum::Interceptor(_) => 1f32,
-            UnitEnum::MessageBox => 1f32,
-            UnitEnum::Dead => 0f32,
-        }
+        1f32
     }
 
     pub fn cooldown(self: &Self) -> i32 {
-        match self {
-            UnitEnum::Interceptor(_) => 360,
-            UnitEnum::MessageBox => 900,
-            UnitEnum::Dead => 0,
-        }
+        900
     }
 
     pub fn p0_colors(self: &Self) -> Color {
-        match self {
-            UnitEnum::Interceptor(_) => Color::from_hex("90E0EF").unwrap(),
-            UnitEnum::MessageBox => Color::from_hex("90E0EF").unwrap(),
-            UnitEnum::Dead => Color::BLACK,
-        }
+        Color::from_hex("90E0EF").unwrap()
     }
 
     pub fn p1_colors(self: &Self) -> Color {
-        match self {
-            UnitEnum::Interceptor(_) => Color::from_hex("74C69D").unwrap(),
-            UnitEnum::MessageBox => Color::from_hex("74C69D").unwrap(),
-            UnitEnum::Dead => Color::BLACK,
-        }
+        Color::from_hex("74C69D").unwrap()
     }
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct MoveCommand {
+pub struct BlinkCommand {
     pub u_id: usize,
-    #[serde(with = "Vector2Def")]
-    pub target: Vector2,
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct InterceptCommand {
-    pub u_id: usize,
     #[serde(with = "Vector2Def")]
     pub pos: Vector2,
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct SpawnCommand {
-    pub unit_type: UnitEnum,
+#[serde_nested]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpawnMsgCommand {
     #[serde(with = "Vector2Def")]
     pub spawn_pos: Vector2,
     pub player_id: usize,
+    #[serde_nested(sub = "Vector2", serde(with = "Vector2Def"))]
+    pub path: Vec<Vector2>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GameCommand {
-    Move(MoveCommand),
-    Blink(MoveCommand),
-    Spawn(SpawnCommand),
+    Blink(BlinkCommand),
+    Spawn(SpawnMsgCommand),
     Intercept(InterceptCommand),
 }
 

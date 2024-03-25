@@ -2,19 +2,18 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::cmp::{min, max};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
+use pathfinding::path_collides;
 use raylib::prelude::*;
 use sc_types::*;
 use sc_types::shapes::*;
 extern crate rmp_serde as rmps;
 
 mod util;
-mod constants;
 mod pathfinding;
 mod types;
 
 use util::*;
-use constants::*;
-use pathfinding::*;
+use sc_types::constants::*;
 use types::*;
 
 fn collide_with_map(rect: Rect<i32>, player_id: usize) -> bool {
@@ -33,17 +32,17 @@ fn collide_with_map(rect: Rect<i32>, player_id: usize) -> bool {
 }
 
 fn move_unit(unit: Unit, speed: f32) -> Vector2 {
-    let new_pos = if unit.target_type == Target::Blink {
-            if (unit.target - unit.pos).length() < BLINK_RANGE {
-                unit.target
+    let new_pos = if unit.blinking {
+            if (unit.path[0] - unit.pos).length() < BLINK_RANGE {
+                unit.path[0]
             } else {
-                unit.pos + (unit.target - unit.pos).normalized().scale_by(BLINK_RANGE)
+                unit.pos + (unit.path[0] - unit.pos).normalized().scale_by(BLINK_RANGE)
             }
         } else {
             if unit.path.is_empty() {
                 unit.pos
             } else {
-                let target = Vector2 { x: unit.path[unit.path.len() - 1].0, y: unit.path[unit.path.len() - 1].1 };
+                let target = unit.path[unit.path.len() - 1];
                 if (target - unit.pos).length_sqr() < speed * speed {
                     target
                 } else {
@@ -62,41 +61,27 @@ fn move_unit(unit: Unit, speed: f32) -> Vector2 {
 fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<Unit>, updates: &[GameCommand], other_units: &mut Vec<Unit>, animations: &mut Vec<Vector2>) {
     for u in updates {
         match u {
-            GameCommand::Move(MoveCommand { u_id, target }) => {
+            GameCommand::Blink(BlinkCommand { u_id }) => {
                 if *u_id < units.len() {
-                    units[*u_id].target_type = Target::Move;
-                    units[*u_id].target = *target;
-                    units[*u_id].path = vec![];
+                    units[*u_id].cooldown = units[*u_id].cooldown();
+                    units[*u_id].blinking = true;
                 }
             },
-            GameCommand::Blink(MoveCommand { u_id, target }) => {
-                if *u_id < units.len() {
-                    units[*u_id].cooldown = UnitEnum::MessageBox.cooldown();
-                    units[*u_id].target_type = Target::Blink;
-                    units[*u_id].target = *target;
-                    units[*u_id].path = vec![];
-                }
+            GameCommand::Spawn(SpawnMsgCommand { path, spawn_pos, player_id }) => {
+                units.push(Unit { dead: false, player_id: *player_id, pos: *spawn_pos, path: path.clone(), blinking: false, cooldown: 0 });
             },
-            GameCommand::Spawn(SpawnCommand { unit_type, spawn_pos, player_id }) => {
-                units.push(Unit { type_: *unit_type, player_id: *player_id, pos: *spawn_pos, target: *spawn_pos, target_type: Target::Move, path: vec![], cooldown: unit_type.cooldown() });
-            },
-            GameCommand::Intercept(InterceptCommand { u_id, pos }) => {
-                if *u_id < units.len() {
-                    units[*u_id].cooldown = UnitEnum::Interceptor(0).cooldown();
-                    animations.push(pos.clone());
-                    for unit in other_units.iter_mut() {
-                        match unit.type_ {
-                            UnitEnum::MessageBox => {
-                                let unit_cen = unit.pos + unit.type_.size().scale_by(0.5f32);
-                                if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
-                                    unit.type_ = UnitEnum::Dead;
-                                    *intercepted_count += 1;
-                                }
-                            },
-                            _ => {}
+            GameCommand::Intercept(InterceptCommand { pos }) => {
+                animations.push(pos.clone());
+                for unit in other_units.iter_mut() {
+                    if !unit.dead {
+                        let unit_cen = unit.pos + unit.size().scale_by(0.5f32);
+                        if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
+                            unit.dead = true;
+                            *intercepted_count += 1;
                         }
                     }
                 }
+                todo!("Intercept cooldown");
             }
         }
     }
@@ -109,10 +94,10 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     let num_other_units = game_state.other_units.len() as i32;
 
     // FIXME need to be able to lookup ship/station rects
-    game_state.my_units.iter_mut().filter(|u| if let UnitEnum::MessageBox = u.type_ { u.rect().collide(&GAME_MAP[2 + u.player_id * 2].1) } else { false })
-        .for_each(|u| u.type_ = UnitEnum::Dead);
+    game_state.my_units.iter_mut().filter(|u| !u.dead && u.rect().collide(&GAME_MAP[2 + u.player_id * 2].1))
+        .for_each(|u| u.dead = true);
     reap(game_state);
-    game_state.other_units.retain(|u| if let UnitEnum::MessageBox = u.type_ { !u.rect().collide(&GAME_MAP[2 + u.player_id * 2].1) } else { true });
+    game_state.other_units.retain(|u| !u.rect().collide(&GAME_MAP[2 + u.player_id * 2].1));
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
@@ -121,45 +106,21 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
 fn tick_cd_expiry(game_state: &mut GameState) {
     for u in game_state.my_units.iter_mut().chain(game_state.other_units.iter_mut()) {
         u.cooldown = max(0, u.cooldown - 1);
-        if let UnitEnum::Interceptor(e) = u.type_ {
-            if e == 1 {
-                u.type_ = UnitEnum::Dead
-            } else {
-                u.type_ = UnitEnum::Interceptor(max(0, e - 1))
-            }
-        }
     }
-
-    reap(game_state);
-    game_state.other_units.retain(|u| u.type_ != UnitEnum::Dead);
 }
 
 fn collide_units(units: &Vec<Unit>, p: &Vector2, s: &Vector2) -> Vec<usize> {
     let mut out: Vec<usize> = vec![];
     for (i, u) in units.iter().enumerate() {
-        if (Rect { x: p.x, y: p.y, w: s.x, h: s.y }).collide(&Rect { x: u.pos.x, y: u.pos.y, w: u.type_.size().x, h: u.type_.size().y }) {
+        if (Rect { x: p.x, y: p.y, w: s.x, h: s.y }).collide(&Rect { x: u.pos.x, y: u.pos.y, w: u.size().x, h: u.size().y }) {
             out.push(i);
         }
     }
     out
 }
 
-fn spawn(game_state: &GameState, player_id: usize, t: UnitEnum, spawn_pos: &[Vector2; 2]) -> Option<GameCommand> {
-    if !collide_units(&game_state.my_units, &spawn_pos[player_id as usize], t.size()).is_empty() ||
-        !collide_units(&game_state.other_units, &spawn_pos[player_id as usize], t.size()).is_empty() {
-        None
-    } else {
-        let spawn_command = Some(GameCommand::Spawn(SpawnCommand { unit_type: t, spawn_pos: spawn_pos[player_id as usize], player_id: player_id }));
-        if let UnitEnum::Interceptor(_) = t {
-            if game_state.my_units.iter().filter(|u| if let UnitEnum::Interceptor(_) = u.type_ { true } else { false }).count() >= MAX_INTERCEPTORS {
-                None
-            } else {
-                spawn_command
-            }
-        } else {
-            spawn_command
-        }
-    }
+fn spawn(player_id: usize, spawn_pos: &[Vector2; 2], path: Vec<Vector2>) -> Option<GameCommand> {
+    Some(GameCommand::Spawn(SpawnMsgCommand { spawn_pos: spawn_pos[player_id as usize], player_id: player_id, path: path }))
 }
 
 fn selected_units(game_state: &GameState) -> Vec<(usize, Unit)> {
@@ -175,7 +136,7 @@ fn selected_units(game_state: &GameState) -> Vec<(usize, Unit)> {
 }
 
 fn move_units(units: &mut Vec<Unit>) {
-    let moved: Vec<_> = units.iter().cloned().map(|unit| Unit { pos: move_unit(unit.clone(), unit.type_.speed()), target_type: Target::Move, ..unit }).collect();
+    let moved: Vec<_> = units.iter().cloned().map(|unit| Unit { pos: move_unit(unit.clone(), unit.speed()), ..unit }).collect();
     for i in 0..moved.len() {
         let mut collided = vec![];
         for j in 0..moved.len() {
@@ -190,7 +151,7 @@ fn move_units(units: &mut Vec<Unit>) {
             units[i] = moved[i].clone();
             if !units[i].path.is_empty() {
                 let path_target = units[i].path[units[i].path.len() - 1];
-                if (Vector2 { x: path_target.0, y: path_target.1 }) == units[i].pos {
+                if path_target == units[i].pos {
                     units[i].path.pop();
                 }
             }
@@ -202,8 +163,8 @@ fn move_units(units: &mut Vec<Unit>) {
                 sum += c.pos;
             }
             let center = sum.scale_by(1f32/(num_collided as f32));
-            let pushed_pos = units[i].pos + (units[i].pos - center).normalized().scale_by(units[i].type_.speed());
-            units[i].path.push((pushed_pos.x, pushed_pos.y));
+            let pushed_pos = units[i].pos + (units[i].pos - center).normalized().scale_by(units[i].speed());
+            units[i].path.push(pushed_pos);
         }
     }
 }
@@ -212,24 +173,21 @@ fn reap(game_state: &mut GameState) {
     let mut out = HashSet::new();
     for s in &game_state.selection {
         if let Selection::Unit(selection_uid) = s {
-            match game_state.my_units[*selection_uid].type_ {
-                UnitEnum::Dead => {}
-                _ => {
-                    let mut count_dead = 0;
-                    for i in 0..*selection_uid {
-                        if let UnitEnum::Dead = game_state.my_units[i].type_ {
-                            count_dead += 1;
-                        }
+            if !game_state.my_units[*selection_uid].dead {
+                let mut count_dead = 0;
+                for i in 0..*selection_uid {
+                    if game_state.my_units[i].dead {
+                        count_dead += 1;
                     }
-                    out.insert(Selection::Unit(*selection_uid - count_dead));
                 }
+                out.insert(Selection::Unit(*selection_uid - count_dead));
             }
         } else {
             out.insert(*s);
         }
     }
     game_state.selection = out;
-    game_state.my_units.retain(|u| u.type_ != UnitEnum::Dead);
+    game_state.my_units.retain(|u| !u.dead);
 }
 
 fn serialize_state(game_state: &GameState, p_id: usize) -> Result<Vec<u8>, rmps::encode::Error> {
@@ -246,6 +204,30 @@ fn serialize_state(game_state: &GameState, p_id: usize) -> Result<Vec<u8>, rmps:
     Ok(v)
 }
 
+fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vector2> {
+    let m1 = Vector2 { x: p1.x, y: p2.y };
+    let m2 = Vector2 { x: p2.x, y: p1.y };
+    let sx = Vector2 { x: MESSAGE_SIZE.x, y: 0f32 };
+    let sy = Vector2 { x: 0f32, y: MESSAGE_SIZE.y };
+    let offsets = [ MESSAGE_SIZE.scale_by(0.5f32), MESSAGE_SIZE.scale_by(-0.5f32), (sx - sy).scale_by(0.5f32), (sy - sx).scale_by(0.5f32) ];
+    let blocked = if p_id == 0 { &P0_BLOCKED } else { &P1_BLOCKED };
+    let m1_ok = !path_collides(blocked, offsets, p1, m1) && !path_collides(blocked, offsets, m1, p2);
+    let m2_ok = !path_collides(blocked, offsets, p1, m2) && !path_collides(blocked, offsets, m2, p2);
+    if m1_ok && m2_ok {
+        if (p1.x - p2.x).abs() < (p1.y - p2.y).abs() {
+            Some(m1)
+        } else {
+            Some(m2)
+        }
+    } else if m1_ok {
+        Some(m1)
+    } else if m2_ok {
+        Some(m2)
+    } else {
+        None
+    }
+}
+
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let max_input_queue = 10;
@@ -257,8 +239,6 @@ fn main() -> std::io::Result<()> {
         (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
     ]);
     let msg_spawn_pos = [Vector2 { x: 502f32, y: 249f32 }, Vector2 { x: 627f32, y: 374f32 }];
-    let int_spawn_pos = [Vector2 { x: 502f32, y: 499f32 }, Vector2 { x: 377f32, y: 374f32 }];
-
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -289,17 +269,23 @@ fn main() -> std::io::Result<()> {
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i64 = 0;
-    let mut s_time = 0f64; // TODO this is unused, remove it
     let mut sent_frame = 0;
     let mut frame_state = FrameState::Neither;
+    // TODO All this netcode related stuff should be abstracted into a single type
     let mut unsent_pkt = vec![];
     let mut unacked_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut future_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut sent_pkt = vec![];
     let mut recvd_pkt = vec![];
     let mut last_rcvd_pkt = -1;
+    // ------------------------
     let mut animations = vec![];
-    let mut drag_select: Option<Vector2> = None;
+    enum MouseState {
+        Drag(Vector2),
+        Path(Vec<Vector2>),
+        None
+    }
+    let mut mouse_state: MouseState = MouseState::None;
     let mut ended = None;
     let mut packets_ps = WindowAvg::new();
     let socket = UdpSocket::bind("0.0.0.0:0")?;
@@ -317,7 +303,7 @@ fn main() -> std::io::Result<()> {
                 ClientState::ExpectWelcome
             },
             ClientState::ExpectWelcome => {
-                let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
+                let resp = socket_recv(&socket, &server[0], &mut seq_state);
                 match resp {
                     None => ClientState::ExpectWelcome,
                     Some(ServerEnum::Welcome { handshake_start_time: _, player_id }) => {
@@ -330,7 +316,7 @@ fn main() -> std::io::Result<()> {
                 }
             },
             ClientState::Waiting => {
-                let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
+                let resp = socket_recv(&socket, &server[0], &mut seq_state);
                 match resp {
                     None => ClientState::Waiting,
                     Some(ServerEnum::Start) => {
@@ -342,7 +328,7 @@ fn main() -> std::io::Result<()> {
                         last_rcvd_pkt = -1;
                         ended = None;
                         animations = vec![];
-                        drag_select = None;
+                        mouse_state = MouseState::None;
                         frame_state = FrameState::Neither;
                         game_state = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), fuel: [START_FUEL; 2], intercepted: [0; 2] };
                         ClientState::Started
@@ -355,7 +341,7 @@ fn main() -> std::io::Result<()> {
             ClientState::Started => {
                 // frame_state can never be Both here. It is reset to neither if it is Both
                 if frame_counter % 2 == 0 && frame_state != FrameState::Received {
-                    let resp = socket_recv(&socket, &server[0], &mut seq_state, &mut s_time);
+                    let resp = socket_recv(&socket, &server[0], &mut seq_state);
                     match resp {
                         None => {
                             match future_pkts.iter().find(|ps| ps.0 == frame_counter) {
@@ -385,37 +371,8 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                drag_select = match drag_select {
-                    None => {
-                        if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
-                            Some(mouse_position)
-                        } else {
-                            None
-                        }
-                    },
-                    Some(start_pos) => {
-                        if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
-                            Some(start_pos)
-                        } else {
-                            let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
-                            let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
-                            let uids_in_box: Vec<Selection> = collide_units(&game_state.my_units, &selection_pos, &selection_size).iter().map(|u_id| Selection::Unit(*u_id)).collect();
-                            if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
-                                game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(uids_in_box)).cloned().collect();
-                            } else {
-                                game_state.selection = HashSet::from_iter(uids_in_box);
-                            }
-                            None
-                        }
-                    }
-                };
-
-                if rl.is_mouse_button_pressed(MouseButton::MOUSE_RIGHT_BUTTON) && unsent_pkt.len() < max_input_queue {
-                    for (u_id, u) in selected_units(&game_state) {
-                        unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: u_id, target: rl.get_mouse_position() - u.type_.size().scale_by(0.5f32) }));
-                    }
-                }
-
+                let mut m_pressed = false;
+                let mut esc_pressed = false;
                 loop {
                     if unsent_pkt.len() >= max_input_queue {
                         break;
@@ -424,30 +381,14 @@ fn main() -> std::io::Result<()> {
                     match rl.get_key_pressed() {
                         Some(k) => {
                             match k {
-                                KeyboardKey::KEY_H => { 
-                                    for (u_id, u) in selected_units(&game_state) { 
-                                        unsent_pkt.push(GameCommand::Move(MoveCommand { u_id: u_id, target: u.pos })); 
-                                    }
-                                },
-                                KeyboardKey::KEY_M => { spawn(&game_state, p_id, UnitEnum::MessageBox, &msg_spawn_pos).map(|c| unsent_pkt.push(c)); }
-                                KeyboardKey::KEY_I => { spawn(&game_state, p_id, UnitEnum::Interceptor(INTERCEPTOR_EXPIRY), &msg_spawn_pos).map(|c| unsent_pkt.push(c)); },
-                                KeyboardKey::KEY_O => { spawn(&game_state, p_id, UnitEnum::Interceptor(INTERCEPTOR_EXPIRY), &int_spawn_pos).map(|c| unsent_pkt.push(c)); },
-                                KeyboardKey::KEY_ONE => game_state.selection = HashSet::from([Selection::Ship]),
-                                KeyboardKey::KEY_TWO => game_state.selection = HashSet::from([Selection::Station]),
+                                KeyboardKey::KEY_M => { m_pressed = true; }
+                                KeyboardKey::KEY_Q => { esc_pressed = true; }
                                 KeyboardKey::KEY_SPACE => {
                                     for (u_id, u) in selected_units(&game_state) {
-                                        match u.type_ {
-                                            UnitEnum::Interceptor(_) => {
-                                                if u.cooldown <= 0 {
-                                                    unsent_pkt.push(GameCommand::Intercept(InterceptCommand { u_id: u_id, pos: u.pos + UnitEnum::Interceptor(0).size().scale_by(0.5f32) }));
-                                                }
-                                            },
-                                            UnitEnum::MessageBox => {
-                                                if u.cooldown <= 0 {
-                                                    unsent_pkt.push(GameCommand::Blink(MoveCommand { u_id: u_id, target: mouse_position - u.type_.size().scale_by(0.5f32) }));
-                                                }
-                                            },
-                                            _ => {}
+                                        if !u.dead {
+                                            if u.cooldown <= 0 {
+                                                unsent_pkt.push(GameCommand::Blink(BlinkCommand { u_id }));
+                                            }
                                         }
                                     }
                                 },
@@ -457,6 +398,47 @@ fn main() -> std::io::Result<()> {
                         None => break
                     }
                 }
+
+                mouse_state = match mouse_state {
+                    MouseState::None => {
+                        if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                            MouseState::Drag(mouse_position)
+                        } else if m_pressed { // TODO && gs.selected == Ship
+                            MouseState::Path(vec![msg_spawn_pos[p_id] + MESSAGE_SIZE.scale_by(0.5f32)])
+                        } else {
+                            MouseState::None
+                        }
+                    },
+                    MouseState::Drag(start_pos) => {
+                        if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                            MouseState::Drag(start_pos)
+                        } else {
+                            let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
+                            let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
+                            let uids_in_box: Vec<Selection> = collide_units(&game_state.my_units, &selection_pos, &selection_size).iter().map(|u_id| Selection::Unit(*u_id)).collect();
+                            // TODO ship/station selection
+                            if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
+                                game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(uids_in_box)).cloned().collect();
+                            } else {
+                                game_state.selection = HashSet::from_iter(uids_in_box);
+                            }
+                            MouseState::None
+                        }
+                    },
+                    MouseState::Path(mut path) => {
+                        if esc_pressed {
+                            MouseState::None
+                        } else {
+                            if rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
+                                if let Some(m) = get_manhattan_turn_point(path[path.len() - 1], mouse_position, p_id) {
+                                    path.push(m);
+                                    path.push(mouse_position);
+                                }
+                            }
+                            MouseState::Path(path)
+                        }
+                    }
+                };
 
                 if sent_frame <= frame_counter && (frame_counter % 2 == 0) {
                     unacked_pkts.push_front((frame_counter, unsent_pkt.clone()));
@@ -487,13 +469,9 @@ fn main() -> std::io::Result<()> {
                     recvd_pkt = vec![];
                     sent_pkt = vec![];
                     if p_id == 0 {
-                        find_paths(&mut game_state.my_units);
-                        find_paths(&mut game_state.other_units);
                         move_units(&mut game_state.my_units);
                         move_units(&mut game_state.other_units);
                     } else {
-                        find_paths(&mut game_state.other_units);
-                        find_paths(&mut game_state.my_units);
                         move_units(&mut game_state.other_units);
                         move_units(&mut game_state.my_units);
                     }
@@ -568,43 +546,25 @@ fn main() -> std::io::Result<()> {
         }
 
         let mut cds = vec![];
-        let mut exps = vec![];
         for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
-            let c = if u.player_id == 0 { u.type_.p0_colors() } else { u.type_.p1_colors() };
-            match u.type_ {
-                UnitEnum::Interceptor(_) => {
-                    let cen = u.pos + u.type_.size().scale_by(0.5f32);
-                    d.draw_circle(cen.x.round() as i32, cen.y.round() as i32, u.type_.size().x/2f32, c);
-                },
-                UnitEnum::MessageBox => d.draw_rectangle_v(u.pos, u.type_.size(), c),
-                _ => {}
-            }
+            let c = if u.player_id == 0 { u.p0_colors() } else { u.p1_colors() };
+            d.draw_rectangle_v(u.pos, u.size(), c);
         }
 
         for s in &game_state.selection {
             match s {
                 Selection::Unit(u_id) => {
                     let u = &game_state.my_units[*u_id];
-                    match u.type_ {
-                        UnitEnum::Interceptor(e) => {
-                            let cen = u.pos + u.type_.size().scale_by(0.5f32);
-                            d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.type_.size().x/2f32, Color::BLACK);
-                            exps.push(e);
-                        },
-                        UnitEnum::MessageBox => {
-                            d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, u.type_.size().x.round() as i32, u.type_.size().y.round() as i32, Color::BLACK)
-                        },
-                        _ => {}
-                    }
+                    d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, u.size().x.round() as i32, u.size().y.round() as i32, Color::BLACK);
                     if !u.path.is_empty() {
-                        let mut p = Vector2 { x: u.path[0].0, y: u.path[0].1 } + u.type_.size().scale_by(0.5f32);
+                        let mut p = u.path[0] + u.size().scale_by(0.5f32);
                         let col = rcolor(0, 255, 0, 100);
                         for i in 1..u.path.len() {
-                            let next_p = Vector2 { x: u.path[i].0, y: u.path[i].1 } + u.type_.size().scale_by(0.5f32);
+                            let next_p = u.path[i] + u.size().scale_by(0.5f32);
                             d.draw_line_v(p, next_p, col);
                             p = next_p;
                         }
-                        let last_p = u.pos + u.type_.size().scale_by(0.5f32);
+                        let last_p = u.pos + u.size().scale_by(0.5f32);
                         d.draw_line_v(p, last_p, col);
                     }
                     cds.push(u.cooldown);
@@ -625,19 +585,39 @@ fn main() -> std::io::Result<()> {
         if !cds.is_empty() {
             d.draw_text(&format!("CD: {}", cds.iter().min().unwrap()), 20, 60, 20, Color::BLACK);
         }
-        if !exps.is_empty() {
-            d.draw_text(&format!("E: {}", exps.iter().min().unwrap()), 20, 80, 20, Color::BLACK);
-        }
 
         for a in animations {
             d.draw_circle(a.x.round() as i32, a.y.round() as i32, INTERCEPT_RADIUS - 10f32, Color::BLACK);
         }
         animations = vec![];
 
-        if let Some(start_pos) = drag_select {
-            let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
-            let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
-            d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::GREEN)
+        match mouse_state {
+            MouseState::Drag(start_pos) => {
+                let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
+                let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
+                d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::GREEN)
+            },
+            MouseState::Path(ref path) => {
+                let mut p = path[0];
+                let col = rcolor(0, 255, 0, 100);
+                let bad_col = rcolor(255, 0, 0, 100);
+                for i in 1..path.len() {
+                    let next_p = path[i];
+                    d.draw_line_v(p, next_p, col);
+                    p = next_p;
+                }
+
+                match get_manhattan_turn_point(p, mouse_position, p_id) {
+                    Some(m) => {
+                        d.draw_line_v(p, m, col);
+                        d.draw_line_v(m, mouse_position, col);
+                    }
+                    None => {
+                        d.draw_line_v(p, mouse_position, bad_col);
+                    }
+                }
+            },
+            _ => {}
         }
 
         d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
