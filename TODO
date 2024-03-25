@@ -5,6 +5,7 @@
 
 [Bugs]
  - Handle multiple dropped packets
+ - move_unit() moves slower around turns and doesn't blink around turns
 
 [Hygiene]
  - Remove unit.dead (atleast don't check it all over the place)

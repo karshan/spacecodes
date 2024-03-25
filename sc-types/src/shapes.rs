@@ -8,6 +8,13 @@ pub struct Rect<T: Num> {
     pub h: T,
 }
 
+pub fn contains_point(r: &Rect<i32>, p: &Vector2) -> bool {
+    let px = p.x.round() as i32;
+    let py = p.y.round() as i32;
+    px >= r.x && px <= r.x + r.w &&
+        py >= r.y && py <= r.y + r.h
+}
+
 impl<T: Num + PartialOrd + Copy + AsPrimitive<f32>> Rect<T> {
     pub fn contains(self: &Rect<T>, child: &Rect<T>) -> bool {
         child.x >= self.x && child.x + child.w <= self.x + self.w &&

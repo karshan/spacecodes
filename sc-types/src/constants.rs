@@ -51,3 +51,11 @@ pub static P1_BLOCKED: [Rect<i32>; 3] = [
     Rect { x: 398, y: 349, w: 228, h: 70 },
     Rect { x: 328, y: 419, w: 368, h: 149 }
 ];
+
+pub fn station(p_id: usize) -> &'static Rect<i32> {
+    &GAME_MAP[2 + p_id * 2].1
+}
+
+pub fn ship(p_id: usize) -> &'static Rect<i32> {
+    &GAME_MAP[1 + p_id * 2].1
+}

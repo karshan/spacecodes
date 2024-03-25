@@ -85,20 +85,24 @@ pub struct Unit {
     #[serde(with = "Vector2Def")]
     pub pos: Vector2,
     #[serde_nested(sub = "Vector2", serde(with = "Vector2Def"))]
-    pub path: Vec<Vector2>,
+    pub path: VecDeque<Vector2>,
     pub blinking: bool,
     pub cooldown: i32,
 }
 
+pub fn unit_rect(pos: &Vector2, size: &Vector2) -> Rect<i32> {
+    // TODO we want to round here the same way opengl does when drawing to the screen.
+    Rect { 
+        x: pos.x.round() as i32,
+        y: pos.y.round() as i32, 
+        w: size.x.round() as i32,
+        h: size.y.round() as i32
+    }
+}
+
 impl Unit {
     pub fn rect(self: &Self) -> Rect<i32> {
-         // TODO we want to round here the same way opengl does when drawing to the screen.
-        Rect { 
-            x: self.pos.x.round() as i32,
-            y: self.pos.y.round() as i32, 
-            w: MESSAGE_SIZE.x.round() as i32,
-            h: MESSAGE_SIZE.y.round() as i32
-        }
+        unit_rect(&self.pos, MESSAGE_SIZE)
     }
 
     pub fn size(self: &Self) -> &Vector2 {
@@ -136,11 +140,9 @@ pub struct InterceptCommand {
 #[serde_nested]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpawnMsgCommand {
-    #[serde(with = "Vector2Def")]
-    pub spawn_pos: Vector2,
     pub player_id: usize,
     #[serde_nested(sub = "Vector2", serde(with = "Vector2Def"))]
-    pub path: Vec<Vector2>
+    pub path: VecDeque<Vector2>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

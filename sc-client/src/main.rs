@@ -16,46 +16,30 @@ use util::*;
 use sc_types::constants::*;
 use types::*;
 
-fn collide_with_map(rect: Rect<i32>, player_id: usize) -> bool {
-    let play_area = Rect { x: 0, y: 0, w: 1024, h: 768 };
-    let blocked_rects = if player_id == 0 { &P0_BLOCKED } else { &P1_BLOCKED };
-    for r in blocked_rects {
-        if rect.collide(r) {
-            return true;
-        }
-    }
-    if !play_area.contains(&rect) {
-        true
-    } else {
-        false
-    }
-}
-
-fn move_unit(unit: Unit, speed: f32) -> Vector2 {
-    let new_pos = if unit.blinking {
+fn move_unit(unit: &mut Unit) -> () {
+    // TODO blink around turns
+    // FIXME don't slow down on turns
+    if !unit.path.is_empty() {
+        let speed = unit.speed();
+        unit.pos = if unit.blinking {
             if (unit.path[0] - unit.pos).length() < BLINK_RANGE {
                 unit.path[0]
             } else {
                 unit.pos + (unit.path[0] - unit.pos).normalized().scale_by(BLINK_RANGE)
             }
         } else {
-            if unit.path.is_empty() {
-                unit.pos
+            if (unit.path[0] - unit.pos).length() < speed {
+                unit.path[0]
             } else {
-                let target = unit.path[unit.path.len() - 1];
-                if (target - unit.pos).length_sqr() < speed * speed {
-                    target
-                } else {
-                    unit.pos + (target - unit.pos).normalized().scale_by(speed)
-                }
+                unit.pos + (unit.path[0] - unit.pos).normalized().scale_by(speed)
             }
         };
-    let new_unit_rect = (Unit { pos: new_pos, ..unit.clone() }).rect();
-    if collide_with_map(new_unit_rect, unit.player_id) {
-        unit.pos
-    } else {
-        new_pos
+
+        if unit.pos == unit.path[0] {
+            unit.path.pop_front();
+        }
     }
+    unit.blinking = false;
 }
 
 fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<Unit>, updates: &[GameCommand], other_units: &mut Vec<Unit>, animations: &mut Vec<Vector2>) {
@@ -67,8 +51,8 @@ fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<Unit>, updates: &[G
                     units[*u_id].blinking = true;
                 }
             },
-            GameCommand::Spawn(SpawnMsgCommand { path, spawn_pos, player_id }) => {
-                units.push(Unit { dead: false, player_id: *player_id, pos: *spawn_pos, path: path.clone(), blinking: false, cooldown: 0 });
+            GameCommand::Spawn(SpawnMsgCommand { path, player_id }) => {
+                units.push(Unit { dead: false, player_id: *player_id, pos: path[0], path: path.clone(), blinking: false, cooldown: 0 });
             },
             GameCommand::Intercept(InterceptCommand { pos }) => {
                 animations.push(pos.clone());
@@ -93,11 +77,10 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
 
-    // FIXME need to be able to lookup ship/station rects
-    game_state.my_units.iter_mut().filter(|u| !u.dead && u.rect().collide(&GAME_MAP[2 + u.player_id * 2].1))
+    game_state.my_units.iter_mut().filter(|u| !u.dead && u.rect().collide(station(u.player_id)))
         .for_each(|u| u.dead = true);
     reap(game_state);
-    game_state.other_units.retain(|u| !u.rect().collide(&GAME_MAP[2 + u.player_id * 2].1));
+    game_state.other_units.retain(|u| !u.rect().collide(station(u.player_id)));
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
@@ -119,10 +102,6 @@ fn collide_units(units: &Vec<Unit>, p: &Vector2, s: &Vector2) -> Vec<usize> {
     out
 }
 
-fn spawn(player_id: usize, spawn_pos: &[Vector2; 2], path: Vec<Vector2>) -> Option<GameCommand> {
-    Some(GameCommand::Spawn(SpawnMsgCommand { spawn_pos: spawn_pos[player_id as usize], player_id: player_id, path: path }))
-}
-
 fn selected_units(game_state: &GameState) -> Vec<(usize, Unit)> {
     let mut out = vec![];
     for s in &game_state.selection {
@@ -133,40 +112,6 @@ fn selected_units(game_state: &GameState) -> Vec<(usize, Unit)> {
         }
     }
     out
-}
-
-fn move_units(units: &mut Vec<Unit>) {
-    let moved: Vec<_> = units.iter().cloned().map(|unit| Unit { pos: move_unit(unit.clone(), unit.speed()), ..unit }).collect();
-    for i in 0..moved.len() {
-        let mut collided = vec![];
-        for j in 0..moved.len() {
-            if i == j {
-                continue;
-            }
-            if moved[i].rect().collide(&moved[j].rect()) {
-                collided.push(moved[j].clone());
-            }
-        }
-        if collided.is_empty() {
-            units[i] = moved[i].clone();
-            if !units[i].path.is_empty() {
-                let path_target = units[i].path[units[i].path.len() - 1];
-                if path_target == units[i].pos {
-                    units[i].path.pop();
-                }
-            }
-        } else {
-            collided.push(moved[i].clone());
-            let num_collided = collided.len();
-            let mut sum = Vector2::zero();
-            for c in collided {
-                sum += c.pos;
-            }
-            let center = sum.scale_by(1f32/(num_collided as f32));
-            let pushed_pos = units[i].pos + (units[i].pos - center).normalized().scale_by(units[i].speed());
-            units[i].path.push(pushed_pos);
-        }
-    }
 }
 
 fn reap(game_state: &mut GameState) {
@@ -209,7 +154,7 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vec
     let m2 = Vector2 { x: p2.x, y: p1.y };
     let sx = Vector2 { x: MESSAGE_SIZE.x, y: 0f32 };
     let sy = Vector2 { x: 0f32, y: MESSAGE_SIZE.y };
-    let offsets = [ MESSAGE_SIZE.scale_by(0.5f32), MESSAGE_SIZE.scale_by(-0.5f32), (sx - sy).scale_by(0.5f32), (sy - sx).scale_by(0.5f32) ];
+    let offsets = [ Vector2::zero(), sx, sy, *MESSAGE_SIZE ];
     let blocked = if p_id == 0 { &P0_BLOCKED } else { &P1_BLOCKED };
     let m1_ok = !path_collides(blocked, offsets, p1, m1) && !path_collides(blocked, offsets, m1, p2);
     let m2_ok = !path_collides(blocked, offsets, p1, m2) && !path_collides(blocked, offsets, m2, p2);
@@ -282,7 +227,7 @@ fn main() -> std::io::Result<()> {
     let mut animations = vec![];
     enum MouseState {
         Drag(Vector2),
-        Path(Vec<Vector2>),
+        Path(VecDeque<Vector2>),
         None
     }
     let mut mouse_state: MouseState = MouseState::None;
@@ -374,6 +319,7 @@ fn main() -> std::io::Result<()> {
                 let mut m_pressed = false;
                 let mut esc_pressed = false;
                 loop {
+                    // TODO check max_input queue in unsent_pkt.push()
                     if unsent_pkt.len() >= max_input_queue {
                         break;
                     }
@@ -404,7 +350,7 @@ fn main() -> std::io::Result<()> {
                         if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
                             MouseState::Drag(mouse_position)
                         } else if m_pressed { // TODO && gs.selected == Ship
-                            MouseState::Path(vec![msg_spawn_pos[p_id] + MESSAGE_SIZE.scale_by(0.5f32)])
+                            MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]))
                         } else {
                             MouseState::None
                         }
@@ -430,12 +376,22 @@ fn main() -> std::io::Result<()> {
                             MouseState::None
                         } else {
                             if rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
-                                if let Some(m) = get_manhattan_turn_point(path[path.len() - 1], mouse_position, p_id) {
-                                    path.push(m);
-                                    path.push(mouse_position);
+                                let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
+                                if let Some(m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
+                                    path.push_back(m);
+                                    path.push_back(eff_mouse_pos);
+                                    if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) {
+                                        unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
+                                        MouseState::None
+                                    } else {
+                                        MouseState::Path(path)
+                                    }
+                                } else {
+                                    MouseState::Path(path)
                                 }
+                            } else {
+                                MouseState::Path(path)
                             }
-                            MouseState::Path(path)
                         }
                     }
                 };
@@ -468,13 +424,8 @@ fn main() -> std::io::Result<()> {
                     }
                     recvd_pkt = vec![];
                     sent_pkt = vec![];
-                    if p_id == 0 {
-                        move_units(&mut game_state.my_units);
-                        move_units(&mut game_state.other_units);
-                    } else {
-                        move_units(&mut game_state.other_units);
-                        move_units(&mut game_state.my_units);
-                    }
+                    game_state.my_units.iter_mut().for_each(|unit| move_unit(unit));
+                    game_state.other_units.iter_mut().for_each(|unit| move_unit(unit));
                     add_fuel(&mut game_state, p_id);
                     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
                     tick_cd_expiry(&mut game_state);
@@ -557,26 +508,22 @@ fn main() -> std::io::Result<()> {
                     let u = &game_state.my_units[*u_id];
                     d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, u.size().x.round() as i32, u.size().y.round() as i32, Color::BLACK);
                     if !u.path.is_empty() {
-                        let mut p = u.path[0] + u.size().scale_by(0.5f32);
+                        let mut p = u.pos + u.size().scale_by(0.5f32);
                         let col = rcolor(0, 255, 0, 100);
-                        for i in 1..u.path.len() {
+                        for i in 0..u.path.len() {
                             let next_p = u.path[i] + u.size().scale_by(0.5f32);
                             d.draw_line_v(p, next_p, col);
                             p = next_p;
                         }
-                        let last_p = u.pos + u.size().scale_by(0.5f32);
-                        d.draw_line_v(p, last_p, col);
                     }
                     cds.push(u.cooldown);
                 },
                 Selection::Ship => {
-                    // FIXME need to be able to lookup ship/station rects
-                    let rect = &GAME_MAP[1 + p_id*2].1;
+                    let rect = ship(p_id);
                     d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, Color::BLACK)
                 },
                 Selection::Station => {
-                    // FIXME need to be able to lookup ship/station rects
-                    let rect = &GAME_MAP[2 + p_id*2].1;
+                    let rect = station(p_id);
                     d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, Color::BLACK)
                 },
             }
@@ -598,11 +545,11 @@ fn main() -> std::io::Result<()> {
                 d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::GREEN)
             },
             MouseState::Path(ref path) => {
-                let mut p = path[0];
+                let mut p = path[0] + MESSAGE_SIZE.scale_by(0.5f32);
                 let col = rcolor(0, 255, 0, 100);
                 let bad_col = rcolor(255, 0, 0, 100);
                 for i in 1..path.len() {
-                    let next_p = path[i];
+                    let next_p = path[i] + MESSAGE_SIZE.scale_by(0.5f32);
                     d.draw_line_v(p, next_p, col);
                     p = next_p;
                 }
