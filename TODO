@@ -2,6 +2,7 @@
  - Select ship before spawning
  - Tramline messages
  - Unit info panel
+ - Intercept
 
 [Bugs]
  - Handle multiple dropped packets
@@ -9,6 +10,7 @@
 
 [Hygiene]
  - Remove unit.dead (atleast don't check it all over the place)
+ - Use with_serde feature of raylib to get Vector2 serde instance
 
 [Performance]
  - No/minumum heap use

@@ -11,10 +11,13 @@ extern crate rmp_serde as rmps;
 mod util;
 mod pathfinding;
 mod types;
+mod ui;
 
 use util::*;
 use sc_types::constants::*;
 use types::*;
+
+use crate::ui::MessageSpellIcons;
 
 fn blink_unit(unit: &mut Unit) -> () {
     unit.blinking = false;
@@ -173,18 +176,24 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vec
     let blocked = if p_id == 0 { &P0_BLOCKED } else { &P1_BLOCKED };
     let m1_ok = !path_collides(blocked, offsets, p1, m1) && !path_collides(blocked, offsets, m1, p2);
     let m2_ok = !path_collides(blocked, offsets, p1, m2) && !path_collides(blocked, offsets, m2, p2);
-    if m1_ok && m2_ok {
-        if (p1.x - p2.x).abs() < (p1.y - p2.y).abs() {
-            Some(m1)
-        } else {
-            Some(m2)
-        }
-    } else if m1_ok {
-        Some(m1)
-    } else if m2_ok {
-        Some(m2)
-    } else {
+    let p1_ok = PLAY_AREA.contains(&unit_rect(&p1, MESSAGE_SIZE));
+    let p2_ok = PLAY_AREA.contains(&unit_rect(&p2, MESSAGE_SIZE));
+    if !p1_ok || !p2_ok {
         None
+    } else {
+        if m1_ok && m2_ok {
+            if (p1.x - p2.x).abs() < (p1.y - p2.y).abs() {
+                Some(m1)
+            } else {
+                Some(m2)
+            }
+        } else if m1_ok {
+            Some(m1)
+        } else if m2_ok {
+            Some(m2)
+        } else {
+            None
+        }
     }
 }
 
@@ -218,10 +227,11 @@ fn main() -> std::io::Result<()> {
 
     set_trace_log(TraceLogLevel::LOG_ERROR);
     let (mut rl, thread) = raylib::init()
-        .size(1024, 768)
+        .size(1024, 968)
         .title("Space Codes")
         .build();
     rl.set_target_fps(frame_rate);
+    let message_spell_icons = MessageSpellIcons::new(&mut rl, &thread);
 
     let mut state = ClientState::SendHello;
     // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
@@ -390,7 +400,7 @@ fn main() -> std::io::Result<()> {
                         if esc_pressed {
                             MouseState::None
                         } else {
-                            if rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
+                            if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
                                 let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
                                 if let Some(m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
                                     path.push_back(m);
@@ -569,10 +579,11 @@ fn main() -> std::io::Result<()> {
                     p = next_p;
                 }
 
-                match get_manhattan_turn_point(p, mouse_position, p_id) {
+                let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
+                match get_manhattan_turn_point(p - MESSAGE_SIZE.scale_by(0.5f32), eff_mouse_pos, p_id) {
                     Some(m) => {
-                        d.draw_line_v(p, m, col);
-                        d.draw_line_v(m, mouse_position, col);
+                        d.draw_line_v(p, m + MESSAGE_SIZE.scale_by(0.5f32), col);
+                        d.draw_line_v(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, col);
                     }
                     None => {
                         d.draw_line_v(p, mouse_position, bad_col);
@@ -593,6 +604,9 @@ fn main() -> std::io::Result<()> {
             };
             d.draw_text(&end_str, 470, 370, 20, Color::BLACK);
         }
+
+        d.draw_line(0, 768, 1023, 768, Color::BLACK);
+        message_spell_icons.render(&mut d);
     }
     Ok(())
 }

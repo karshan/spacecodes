@@ -17,6 +17,10 @@ pub static MESSAGE_SIZE: &Vector2 = &Vector2 { x: 20f32, y: 20f32 };
 pub static INTERCEPT_RADIUS: f32 = 40f32;
 pub static BLINK_RANGE: f32 = 120f32;
 pub static KILLS_TO_WIN: u8 = 10;
+pub static PLAY_AREA: Rect<i32> = Rect {
+    x: 0, y: 0,
+    w: 1024, h: 768,
+};
 pub static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
     (AreaEnum::Blocked, Rect {
         x: 328, y: 200,

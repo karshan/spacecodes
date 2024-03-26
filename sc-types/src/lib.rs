@@ -8,6 +8,7 @@ use raylib::prelude::{Vector2,Color};
 
 pub mod shapes;
 use serde::{Deserialize, Serialize};
+// TODO enable with_serde feature on raylib then we don't need serde_nested or serde remote
 use serde_nested_with::serde_nested;
 use shapes::*;
 pub mod constants;
@@ -110,7 +111,7 @@ impl Unit {
     }
 
     pub fn speed(self: &Self) -> f32 {
-        1f32
+        2f32
     }
 
     pub fn cooldown(self: &Self) -> i32 {
