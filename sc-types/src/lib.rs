@@ -144,7 +144,7 @@ pub struct BlinkCommand {
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct InterceptCommand {
     #[serde(with = "Vector2Def")]
-    pub pos: Vector2,
+    pub pos: Vector2
 }
 
 #[serde_nested]

@@ -19,6 +19,12 @@ use types::*;
 
 use crate::ui::*;
 
+struct Interception {
+    start_frame: i64,
+    pos: Vector2,
+    player_id: usize,
+}
+
 fn blink_unit(unit: &mut Unit) -> () {
     unit.blinking = false;
     if (unit.path[0] - unit.pos).length() < BLINK_RANGE {
@@ -60,7 +66,7 @@ fn move_units(units: &mut Vec<Unit>) {
     units.iter_mut().for_each(|unit| if unit.blinking { blink_unit(unit) } else { move_unit(unit) });
 }
 
-fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_id: usize, animations: &mut Vec<Vector2>) {
+fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_id: usize, interceptions: &mut Vec<Interception>, frame: i64) {
     for i in 0..=1 {
         for u in updates[i] {
             let (units, other_units) = if p_id == i {
@@ -79,26 +85,34 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
                     units.push(Unit { dead: false, player_id: *player_id, pos: path[0], path: path.clone(), blinking: false, cooldown: 0 });
                 },
                 GameCommand::Intercept(InterceptCommand { pos }) => {
-                    animations.push(pos.clone());
+                    interceptions.push(Interception { pos: pos.clone(), start_frame: frame, player_id: i });
                     game_state.gold[i] -= INTERCEPT_COST;
-                    for unit in other_units.iter_mut() {
-                        if !unit.dead {
-                            let unit_cen = unit.pos + unit.size().scale_by(0.5f32);
-                            if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
-                                unit.dead = true;
-                                game_state.intercepted[i] += 1;
-                            }
-                        }
-                    }
                 }
-            }
-            if i != p_id {
-                reap(game_state);
-            } else {
-                game_state.other_units.retain(|u| !u.dead);
             }
         }
     }
+
+    for intercept in &mut *interceptions {
+        if (frame - intercept.start_frame) as f32 >= INTERCEPT_DELAY {
+            let other_units = if p_id == intercept.player_id {
+                &mut game_state.other_units
+            } else {
+                &mut game_state.my_units
+            };
+            for unit in other_units.iter_mut() {
+                if !unit.dead {
+                    let unit_cen = unit.pos + unit.size().scale_by(0.5f32);
+                    if (unit_cen.x - intercept.pos.x).powf(2f32) + (unit_cen.y - intercept.pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
+                        unit.dead = true;
+                        game_state.intercepted[intercept.player_id] += 1;
+                    }
+                }
+            }
+        }
+    }
+    interceptions.retain(|i| ((frame - i.start_frame) as f32) < INTERCEPT_DELAY);
+    reap(game_state);
+    game_state.other_units.retain(|u| !u.dead);
 }
 
 fn add_fuel(game_state: &mut GameState, p_id: usize) {
@@ -273,7 +287,7 @@ fn main() -> std::io::Result<()> {
     let mut recvd_pkt = vec![];
     let mut last_rcvd_pkt = -1;
     // ------------------------
-    let mut animations = vec![];
+    let mut interceptions = vec![];
     enum MouseState {
         Drag(Vector2),
         Path(VecDeque<Vector2>),
@@ -323,7 +337,7 @@ fn main() -> std::io::Result<()> {
                         future_pkts = VecDeque::new();
                         last_rcvd_pkt = -1;
                         ended = None;
-                        animations = vec![];
+                        interceptions = vec![];
                         mouse_state = MouseState::None;
                         frame_state = FrameState::Neither;
                         game_state = GameState {
@@ -542,7 +556,7 @@ fn main() -> std::io::Result<()> {
                 }
 
                 if frame_state == FrameState::Both || (frame_counter % 2 == 1) {
-                    apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut animations);
+                    apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
                     recvd_pkt = vec![];
                     sent_pkt = vec![];
                     move_units(&mut game_state.my_units);
@@ -660,10 +674,9 @@ fn main() -> std::io::Result<()> {
             ship_spell_icons.render(&mut d, 0f32);
         }
 
-        for a in animations {
-            d.draw_circle(a.x.round() as i32, a.y.round() as i32, INTERCEPT_RADIUS - 10f32, Color::BLACK);
+        for a in &interceptions {
+            d.draw_circle(a.pos.x.round() as i32, a.pos.y.round() as i32, (INTERCEPT_RADIUS * ((frame_counter - a.start_frame) as f32))/INTERCEPT_DELAY, Color::BLACK);
         }
-        animations = vec![];
 
         match mouse_state {
             MouseState::Drag(start_pos) => {

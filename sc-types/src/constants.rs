@@ -18,6 +18,7 @@ pub static MESSAGE_SIZE: &Vector2 = &Vector2 { x: 20f32, y: 20f32 };
 pub static BLINK_COOLDOWN: i32 = 900;
 pub static INTERCEPT_RADIUS: f32 = 40f32;
 pub static INTERCEPT_COST: f32 = 40f32;
+pub static INTERCEPT_DELAY: f32 = 3f32 * 60f32;
 pub static BLINK_RANGE: f32 = 120f32;
 pub static KILLS_TO_WIN: u8 = 10;
 pub static PLAY_AREA: Rect<i32> = Rect {

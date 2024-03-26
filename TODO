@@ -1,5 +1,6 @@
 [Features]
  - Upgrades
+ - Show spell hotkeys in ui
 
 [Bugs]
  - Recover when packets from both clients are dropped on the same frame
@@ -15,3 +16,4 @@
  - Packed bools and structs
  - maximise cache utilization, iterate through units just once per frame
  - function inlining?
+ - frame type i64->u32
