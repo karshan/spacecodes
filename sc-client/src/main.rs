@@ -69,11 +69,7 @@ fn move_units(units: &mut Vec<Unit>) {
 fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_id: usize, interceptions: &mut Vec<Interception>, frame: i64) {
     for i in 0..=1 {
         for u in updates[i] {
-            let (units, other_units) = if p_id == i {
-                (&mut game_state.my_units, &mut game_state.other_units)
-            } else {
-                (&mut game_state.other_units, &mut game_state.my_units)
-            };
+            let units = if p_id == i { &mut game_state.my_units } else { &mut game_state.other_units };
             match u {
                 GameCommand::Blink(BlinkCommand { u_id }) => {
                     if *u_id < units.len() {
@@ -94,11 +90,7 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
 
     for intercept in &mut *interceptions {
         if (frame - intercept.start_frame) as f32 >= INTERCEPT_DELAY {
-            let other_units = if p_id == intercept.player_id {
-                &mut game_state.other_units
-            } else {
-                &mut game_state.my_units
-            };
+            let other_units = if p_id == intercept.player_id { &mut game_state.other_units } else { &mut game_state.my_units };
             for unit in other_units.iter_mut() {
                 if !unit.dead {
                     let unit_cen = unit.pos + unit.size().scale_by(0.5f32);
