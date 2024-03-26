@@ -17,7 +17,7 @@ use util::*;
 use sc_types::constants::*;
 use types::*;
 
-use crate::ui::MessageSpellIcons;
+use crate::ui::*;
 
 fn blink_unit(unit: &mut Unit) -> () {
     unit.blinking = false;
@@ -60,30 +60,42 @@ fn move_units(units: &mut Vec<Unit>) {
     units.iter_mut().for_each(|unit| if unit.blinking { blink_unit(unit) } else { move_unit(unit) });
 }
 
-fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<Unit>, updates: &[GameCommand], other_units: &mut Vec<Unit>, animations: &mut Vec<Vector2>) {
-    for u in updates {
-        match u {
-            GameCommand::Blink(BlinkCommand { u_id }) => {
-                if *u_id < units.len() {
-                    units[*u_id].cooldown = units[*u_id].cooldown();
-                    units[*u_id].blinking = true;
-                }
-            },
-            GameCommand::Spawn(SpawnMsgCommand { path, player_id }) => {
-                units.push(Unit { dead: false, player_id: *player_id, pos: path[0], path: path.clone(), blinking: false, cooldown: 0 });
-            },
-            GameCommand::Intercept(InterceptCommand { pos }) => {
-                animations.push(pos.clone());
-                for unit in other_units.iter_mut() {
-                    if !unit.dead {
-                        let unit_cen = unit.pos + unit.size().scale_by(0.5f32);
-                        if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
-                            unit.dead = true;
-                            *intercepted_count += 1;
+fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_id: usize, animations: &mut Vec<Vector2>) {
+    for i in 0..=1 {
+        for u in updates[i] {
+            let (units, other_units) = if p_id == i {
+                (&mut game_state.my_units, &mut game_state.other_units)
+            } else {
+                (&mut game_state.other_units, &mut game_state.my_units)
+            };
+            match u {
+                GameCommand::Blink(BlinkCommand { u_id }) => {
+                    if *u_id < units.len() {
+                        units[*u_id].cooldown = units[*u_id].cooldown();
+                        units[*u_id].blinking = true;
+                    }
+                },
+                GameCommand::Spawn(SpawnMsgCommand { path, player_id }) => {
+                    units.push(Unit { dead: false, player_id: *player_id, pos: path[0], path: path.clone(), blinking: false, cooldown: 0 });
+                },
+                GameCommand::Intercept(InterceptCommand { pos }) => {
+                    animations.push(pos.clone());
+                    game_state.gold[i] -= INTERCEPT_COST;
+                    for unit in other_units.iter_mut() {
+                        if !unit.dead {
+                            let unit_cen = unit.pos + unit.size().scale_by(0.5f32);
+                            if (unit_cen.x - pos.x).powf(2f32) + (unit_cen.y - pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
+                                unit.dead = true;
+                                game_state.intercepted[i] += 1;
+                            }
                         }
                     }
                 }
-                todo!("Intercept cooldown");
+            }
+            if i != p_id {
+                reap(game_state);
+            } else {
+                game_state.other_units.retain(|u| !u.dead);
             }
         }
     }
@@ -104,10 +116,13 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
 }
 
-fn tick_cd_expiry(game_state: &mut GameState) {
+fn tick(game_state: &mut GameState) {
     for u in game_state.my_units.iter_mut().chain(game_state.other_units.iter_mut()) {
         u.cooldown = max(0, u.cooldown - 1);
     }
+
+    game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
+    game_state.gold.iter_mut().for_each(|g| *g += GOLD_GAIN);
 }
 
 fn collide_units(units: &Vec<Unit>, p: &Vector2, s: &Vector2) -> Vec<usize> {
@@ -232,10 +247,19 @@ fn main() -> std::io::Result<()> {
         .build();
     rl.set_target_fps(frame_rate);
     let message_spell_icons = MessageSpellIcons::new(&mut rl, &thread);
+    let ship_spell_icons = ShipSpellIcons::new(&mut rl, &thread);
 
     let mut state = ClientState::SendHello;
     // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
-    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), sub_selection: None, fuel: [START_FUEL; 2], intercepted: [0; 2] };
+    let mut game_state: GameState = GameState {
+        my_units: vec![],
+        other_units: vec![],
+        selection: HashSet::new(),
+        sub_selection: None,
+        fuel: [START_FUEL; 2],
+        intercepted: [0; 2],
+        gold: [0f32; 2],
+    };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i64 = 0;
@@ -253,6 +277,8 @@ fn main() -> std::io::Result<()> {
     enum MouseState {
         Drag(Vector2),
         Path(VecDeque<Vector2>),
+        Intercept,
+        WaitReleaseLButton,
         None
     }
     let mut mouse_state: MouseState = MouseState::None;
@@ -300,7 +326,15 @@ fn main() -> std::io::Result<()> {
                         animations = vec![];
                         mouse_state = MouseState::None;
                         frame_state = FrameState::Neither;
-                        game_state = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), sub_selection: None, fuel: [START_FUEL; 2], intercepted: [0; 2] };
+                        game_state = GameState {
+                            my_units: vec![],
+                            other_units: vec![],
+                            selection: HashSet::new(),
+                            sub_selection: None,
+                            fuel: [START_FUEL; 2],
+                            intercepted: [0; 2],
+                            gold: [0f32; 2],
+                        };
                         ClientState::Started
                     },
                     Some(_) => {
@@ -341,8 +375,9 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                let mut m_pressed = false;
-                let mut esc_pressed = false;
+                let mut start_message_path = false;
+                let mut cancel = false;
+                let mut start_intercept = false;
                 loop {
                     // TODO check max_input queue in unsent_pkt.push()
                     if unsent_pkt.len() >= max_input_queue {
@@ -367,8 +402,15 @@ fn main() -> std::io::Result<()> {
                                         game_state.sub_selection = Some(choices[(choices.iter().enumerate().find(|(_, c)| **c == subsel).unwrap().0 + 1) % choices.len()]);
                                     }
                                 },
-                                KeyboardKey::KEY_M => { m_pressed = true; }
-                                KeyboardKey::KEY_Q => { esc_pressed = true; }
+                                KeyboardKey::KEY_M => { start_message_path = game_state.sub_selection == Some(SubSelection::Ship) },
+                                KeyboardKey::KEY_I => { start_intercept = game_state.sub_selection == Some(SubSelection::Ship) },
+                                KeyboardKey::KEY_Q => {
+                                    match mouse_state {
+                                        MouseState::Path(_) => { cancel = true }
+                                        MouseState::Intercept => { cancel = true }
+                                        _ => {}
+                                    }
+                                },
                                 KeyboardKey::KEY_SPACE => {
                                     for (u_id, u) in selected_units(&game_state) {
                                         if !u.dead {
@@ -389,8 +431,11 @@ fn main() -> std::io::Result<()> {
                     MouseState::None => {
                         if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
                             MouseState::Drag(mouse_position)
-                        } else if m_pressed && game_state.sub_selection == Some(SubSelection::Ship) {
+                        } else if start_message_path {
                             MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]))
+                        } else if start_intercept {
+                            rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_CROSSHAIR);
+                            MouseState::Intercept
                         } else {
                             MouseState::None
                         }
@@ -433,7 +478,7 @@ fn main() -> std::io::Result<()> {
                         }
                     },
                     MouseState::Path(mut path) => {
-                        if esc_pressed {
+                        if cancel {
                             MouseState::None
                         } else {
                             if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
@@ -453,6 +498,29 @@ fn main() -> std::io::Result<()> {
                             } else {
                                 MouseState::Path(path)
                             }
+                        }
+                    },
+                    MouseState::Intercept => {
+                        if cancel {
+                            rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
+                            MouseState::None
+                        } else if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                            if game_state.gold[p_id] >= INTERCEPT_COST {
+                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: mouse_position }));
+                                rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
+                                MouseState::WaitReleaseLButton
+                            } else {
+                                MouseState::Intercept
+                            }
+                        } else {
+                            MouseState::Intercept
+                        }
+                    },
+                    MouseState::WaitReleaseLButton => {
+                        if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                            MouseState::WaitReleaseLButton
+                        } else {
+                            MouseState::None
                         }
                     }
                 };
@@ -474,22 +542,13 @@ fn main() -> std::io::Result<()> {
                 }
 
                 if frame_state == FrameState::Both || (frame_counter % 2 == 1) {
-                    if p_id == 0 {
-                        apply_updates(&mut game_state.intercepted[p_id], &mut game_state.my_units, &sent_pkt, &mut game_state.other_units, &mut animations);
-                        apply_updates(&mut game_state.intercepted[(p_id + 1) % 2], &mut game_state.other_units, &recvd_pkt, &mut game_state.my_units, &mut animations);
-                        reap(&mut game_state);
-                    } else {
-                        apply_updates(&mut game_state.intercepted[(p_id + 1) % 2], &mut game_state.other_units, &recvd_pkt, &mut game_state.my_units, &mut animations);
-                        reap(&mut game_state);
-                        apply_updates(&mut game_state.intercepted[p_id], &mut game_state.my_units, &sent_pkt, &mut game_state.other_units, &mut animations);
-                    }
+                    apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut animations);
                     recvd_pkt = vec![];
                     sent_pkt = vec![];
                     move_units(&mut game_state.my_units);
                     move_units(&mut game_state.other_units);
                     add_fuel(&mut game_state, p_id);
-                    game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
-                    tick_cd_expiry(&mut game_state);
+                    tick(&mut game_state);
                     frame_counter += 1;
                     if frame_counter % 60 == 0 {
                         socket_send(&socket, &server[0], &ClientPkt::StateHash { 
@@ -557,7 +616,6 @@ fn main() -> std::io::Result<()> {
             }
         }
 
-        let mut cds = vec![];
         for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
             let c = if u.player_id == 0 { u.p0_colors() } else { u.p1_colors() };
             d.draw_rectangle_v(u.pos, u.size(), c);
@@ -577,7 +635,6 @@ fn main() -> std::io::Result<()> {
                             p = next_p;
                         }
                     }
-                    cds.push(u.cooldown);
                 },
                 Selection::Ship => {
                     let rect = ship(p_id);
@@ -590,8 +647,17 @@ fn main() -> std::io::Result<()> {
             }
         }   
 
-        if !cds.is_empty() && game_state.sub_selection == Some(SubSelection::Unit) {
-            message_spell_icons.render(&mut d, (*cds.iter().min().unwrap() as f32)/(BLINK_COOLDOWN as f32));
+        if game_state.sub_selection == Some(SubSelection::Unit) {
+            let cooldowns: Vec<i32> =
+                game_state.selection.iter().map(
+                    |s| if let Selection::Unit(uid) = s {
+                        Some(game_state.my_units[*uid].cooldown)
+                    } else { None }
+                ).flatten().collect();
+
+            message_spell_icons.render(&mut d, (*cooldowns.iter().min().unwrap() as f32)/(BLINK_COOLDOWN as f32));
+        } else if game_state.sub_selection == Some(SubSelection::Ship) {
+            ship_spell_icons.render(&mut d, 0f32);
         }
 
         for a in animations {
@@ -643,6 +709,7 @@ fn main() -> std::io::Result<()> {
 
         d.draw_line(0, 768, 1023, 768, Color::BLACK);
         d.draw_text(&format!("{:?}", game_state.sub_selection), 20, 768, 20, Color::BLACK);
+        d.draw_text(&format!("{}", game_state.gold[p_id].round()), 20, 788, 20, Color::BLACK);
     }
     Ok(())
 }

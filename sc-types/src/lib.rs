@@ -71,6 +71,7 @@ pub struct GameState {
     pub sub_selection: Option<SubSelection>,
     pub fuel: [i32; 2],
     pub intercepted: [u8; 2],
+    pub gold: [f32; 2],
 }
 
 #[derive(Clone, Serialize, Deserialize)]

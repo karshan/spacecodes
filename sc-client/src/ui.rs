@@ -55,3 +55,25 @@ impl MessageSpellIcons {
         self.invuln.render(d, 0f32);
     }
 }
+
+pub struct ShipSpellIcons {
+    intercept: SpellIcon,
+}
+
+impl ShipSpellIcons {
+    pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> ShipSpellIcons {
+        let icon_size = Vector2::new(50f32, 50f32);
+        let start_pos = Vector2::new(394f32, 843f32);
+        ShipSpellIcons {
+            intercept: SpellIcon {
+                tex: rl.load_texture(&thread, "sc-client/assets/intercept.png").unwrap(),
+                pos: start_pos,
+                size: icon_size
+            }
+        }
+    }
+
+    pub fn render(self: &Self, d: &mut RaylibDrawHandle, intercept_cd: f32) {
+        self.intercept.render(d, intercept_cd);
+    }
+}
