@@ -386,12 +386,18 @@ fn main() -> std::io::Result<()> {
                         } else {
                             let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
                             let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
-                            let uids_in_box: Vec<Selection> = collide_units(&game_state.my_units, &selection_pos, &selection_size).iter().map(|u_id| Selection::Unit(*u_id)).collect();
-                            // TODO ship/station selection
+                            let selection_rect = Rect { x: selection_pos.x.round() as i32, y: selection_pos.y.round() as i32, w: selection_size.x.round() as i32, h: selection_size.y.round() as i32 };
+                            let mut in_box: Vec<Selection> = collide_units(&game_state.my_units, &selection_pos, &selection_size).iter().map(|u_id| Selection::Unit(*u_id)).collect();
+                            if ship(p_id).collide(&selection_rect) {
+                                in_box.push(Selection::Ship);
+                            }
+                            if station(p_id).collide(&selection_rect) {
+                                in_box.push(Selection::Station);
+                            }
                             if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
-                                game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(uids_in_box)).cloned().collect();
+                                game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
                             } else {
-                                game_state.selection = HashSet::from_iter(uids_in_box);
+                                game_state.selection = HashSet::from_iter(in_box);
                             }
                             MouseState::None
                         }
