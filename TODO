@@ -1,7 +1,5 @@
 [Features]
- - Select ship before spawning
  - Intercept
- - Show selected units in panel and allow tabbing between station/ship/messages
 
 [Bugs]
  - Handle multiple dropped packets

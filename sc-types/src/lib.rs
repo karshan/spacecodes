@@ -56,11 +56,19 @@ pub enum Selection {
     Ship,
 }
 
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq, Hash)]
+pub enum SubSelection {
+    Unit,
+    Station,
+    Ship
+}
+
 #[derive(Clone)]
 pub struct GameState {
     pub my_units: Vec<Unit>,
     pub other_units: Vec<Unit>,
     pub selection: HashSet<Selection>,
+    pub sub_selection: Option<SubSelection>,
     pub fuel: [i32; 2],
     pub intercepted: [u8; 2],
 }

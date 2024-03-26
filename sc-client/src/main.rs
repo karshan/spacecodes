@@ -235,7 +235,7 @@ fn main() -> std::io::Result<()> {
 
     let mut state = ClientState::SendHello;
     // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
-    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), fuel: [START_FUEL; 2], intercepted: [0; 2] };
+    let mut game_state: GameState = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), sub_selection: None, fuel: [START_FUEL; 2], intercepted: [0; 2] };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i64 = 0;
@@ -300,7 +300,7 @@ fn main() -> std::io::Result<()> {
                         animations = vec![];
                         mouse_state = MouseState::None;
                         frame_state = FrameState::Neither;
-                        game_state = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), fuel: [START_FUEL; 2], intercepted: [0; 2] };
+                        game_state = GameState { my_units: vec![], other_units: vec![], selection: HashSet::new(), sub_selection: None, fuel: [START_FUEL; 2], intercepted: [0; 2] };
                         ClientState::Started
                     },
                     Some(_) => {
@@ -352,6 +352,21 @@ fn main() -> std::io::Result<()> {
                     match rl.get_key_pressed() {
                         Some(k) => {
                             match k {
+                                KeyboardKey::KEY_TAB => {
+                                    if let Some(subsel) = game_state.sub_selection {
+                                        let mut choices = vec![];
+                                        if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
+                                            choices.push(SubSelection::Unit);
+                                        }
+                                        if game_state.selection.contains(&Selection::Ship) {
+                                            choices.push(SubSelection::Ship);
+                                        }
+                                        if game_state.selection.contains(&Selection::Station) {
+                                            choices.push(SubSelection::Station);
+                                        }
+                                        game_state.sub_selection = Some(choices[(choices.iter().enumerate().find(|(_, c)| **c == subsel).unwrap().0 + 1) % choices.len()]);
+                                    }
+                                },
                                 KeyboardKey::KEY_M => { m_pressed = true; }
                                 KeyboardKey::KEY_Q => { esc_pressed = true; }
                                 KeyboardKey::KEY_SPACE => {
@@ -372,9 +387,9 @@ fn main() -> std::io::Result<()> {
 
                 mouse_state = match mouse_state {
                     MouseState::None => {
-                        if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                        if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
                             MouseState::Drag(mouse_position)
-                        } else if m_pressed { // TODO && gs.selected == Ship
+                        } else if m_pressed && game_state.sub_selection == Some(SubSelection::Ship) {
                             MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]))
                         } else {
                             MouseState::None
@@ -398,6 +413,21 @@ fn main() -> std::io::Result<()> {
                                 game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
                             } else {
                                 game_state.selection = HashSet::from_iter(in_box);
+                            }
+                            let mut choices = vec![];
+                            if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
+                                choices.push(SubSelection::Unit);
+                            }
+                            if game_state.selection.contains(&Selection::Ship) {
+                                choices.push(SubSelection::Ship);
+                            }
+                            if game_state.selection.contains(&Selection::Station) {
+                                choices.push(SubSelection::Station);
+                            }
+                            if choices.is_empty() {
+                                game_state.sub_selection = None;
+                            } else {
+                                game_state.sub_selection = Some(choices[0]);
                             }
                             MouseState::None
                         }
@@ -560,7 +590,7 @@ fn main() -> std::io::Result<()> {
             }
         }   
 
-        if !cds.is_empty() {
+        if !cds.is_empty() && game_state.sub_selection == Some(SubSelection::Unit) {
             message_spell_icons.render(&mut d, (*cds.iter().min().unwrap() as f32)/(BLINK_COOLDOWN as f32));
         }
 
@@ -612,6 +642,7 @@ fn main() -> std::io::Result<()> {
         }
 
         d.draw_line(0, 768, 1023, 768, Color::BLACK);
+        d.draw_text(&format!("{:?}", game_state.sub_selection), 20, 768, 20, Color::BLACK);
     }
     Ok(())
 }
