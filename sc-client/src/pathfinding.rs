@@ -3,6 +3,7 @@ use std::f32::EPSILON;
 use sc_types::shapes::*;
 use raylib::prelude::*;
 
+// This is identitical to raylib's implementation. However raylib::check_collision_lines() returns bogus values on MacOS
 fn check_collision_lines(a0: Vector2, a1: Vector2, b0: Vector2, b1: Vector2) -> bool {
     let mut collision = false;
     let div = (b1.y - b0.y)*(a1.x - a0.x) - (b1.x - b0.x)*(a1.y - a0.y);

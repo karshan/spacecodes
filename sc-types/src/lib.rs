@@ -119,7 +119,7 @@ impl Unit {
     }
 
     pub fn speed(self: &Self) -> f32 {
-        2f32
+        1.5f32
     }
 
     pub fn cooldown(self: &Self) -> i32 {

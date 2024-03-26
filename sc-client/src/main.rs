@@ -171,6 +171,21 @@ fn reap(game_state: &mut GameState) {
         }
     }
     game_state.selection = out;
+    let mut choices = vec![];
+    if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
+        choices.push(SubSelection::Unit);
+    }
+    if game_state.selection.contains(&Selection::Ship) {
+        choices.push(SubSelection::Ship);
+    }
+    if game_state.selection.contains(&Selection::Station) {
+        choices.push(SubSelection::Station);
+    }
+    if let Some(cur_subsel) = game_state.sub_selection {
+        if !choices.contains(&cur_subsel) {
+            game_state.sub_selection = if choices.is_empty() { None } else { Some(choices[0]) };
+        }
+    }
     game_state.my_units.retain(|u| !u.dead);
 }
 
@@ -667,7 +682,9 @@ fn main() -> std::io::Result<()> {
         }
 
         for a in &interceptions {
-            d.draw_circle(a.pos.x.round() as i32, a.pos.y.round() as i32, (INTERCEPT_RADIUS * ((frame_counter - a.start_frame) as f32))/INTERCEPT_DELAY, Color::BLACK);
+            // intercept radius - 10f32 is a hack to make it look like and intercept just clipping a message is successful
+            // actually the interception circle needs to contain the center of the message to succeed
+            d.draw_circle(a.pos.x.round() as i32, a.pos.y.round() as i32, ((INTERCEPT_RADIUS - 10f32) * ((frame_counter - a.start_frame) as f32))/INTERCEPT_DELAY, Color::BLACK);
         }
 
         match mouse_state {
