@@ -16,30 +16,45 @@ use util::*;
 use sc_types::constants::*;
 use types::*;
 
-fn move_unit(unit: &mut Unit) -> () {
-    // TODO blink around turns
-    // FIXME don't slow down on turns
-    if !unit.path.is_empty() {
-        let speed = unit.speed();
-        unit.pos = if unit.blinking {
-            if (unit.path[0] - unit.pos).length() < BLINK_RANGE {
-                unit.path[0]
-            } else {
-                unit.pos + (unit.path[0] - unit.pos).normalized().scale_by(BLINK_RANGE)
+fn blink_unit(unit: &mut Unit) -> () {
+    unit.blinking = false;
+    if (unit.path[0] - unit.pos).length() < BLINK_RANGE {
+        let mut acc = (unit.path[0] - unit.pos).length();
+        let mut p0 = unit.path.pop_front().unwrap();
+        while !unit.path.is_empty() {
+            let p1 = *unit.path.front().unwrap();
+            let l = (p1 - p0).length();
+            if l + acc >= BLINK_RANGE {
+                unit.pos = p0.lerp(p1, (BLINK_RANGE - acc)/l);
+                return;
             }
-        } else {
-            if (unit.path[0] - unit.pos).length() < speed {
-                unit.path[0]
-            } else {
-                unit.pos + (unit.path[0] - unit.pos).normalized().scale_by(speed)
-            }
-        };
-
-        if unit.pos == unit.path[0] {
+            acc += l;
+            p0 = p1;
             unit.path.pop_front();
         }
+        unit.pos = p0;
+    } else {
+        unit.pos += (unit.path[0] - unit.pos).normalized().scale_by(BLINK_RANGE)
     }
-    unit.blinking = false;
+}
+
+fn move_unit(unit: &mut Unit) -> () {
+    let speed = unit.speed();
+    unit.pos =
+        if (unit.path[0] - unit.pos).length() < speed {
+            // FIXME don't slow down on turns
+            unit.path[0]
+        } else {
+            unit.pos + (unit.path[0] - unit.pos).normalized().scale_by(speed)
+        };
+
+    if unit.pos == unit.path[0] {
+        unit.path.pop_front();
+    }
+}
+
+fn move_units(units: &mut Vec<Unit>) {
+    units.iter_mut().for_each(|unit| if unit.blinking { blink_unit(unit) } else { move_unit(unit) });
 }
 
 fn apply_updates(intercepted_count: &mut u8, units: &mut Vec<Unit>, updates: &[GameCommand], other_units: &mut Vec<Unit>, animations: &mut Vec<Vector2>) {
@@ -424,8 +439,8 @@ fn main() -> std::io::Result<()> {
                     }
                     recvd_pkt = vec![];
                     sent_pkt = vec![];
-                    game_state.my_units.iter_mut().for_each(|unit| move_unit(unit));
-                    game_state.other_units.iter_mut().for_each(|unit| move_unit(unit));
+                    move_units(&mut game_state.my_units);
+                    move_units(&mut game_state.other_units);
                     add_fuel(&mut game_state, p_id);
                     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
                     tick_cd_expiry(&mut game_state);
