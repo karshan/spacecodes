@@ -6,8 +6,9 @@ pub struct SpellIcon {
 }
 
 impl SpellIcon {
-    pub fn render(self: &Self, d: &mut RaylibDrawHandle) {
+    pub fn render(self: &Self, d: &mut RaylibDrawHandle, cooldown: f32) {
         d.draw_texture_ex(&self.tex, self.pos, 0f32, 1f32, Color::WHITE);
+        d.draw_rectangle_v(self.pos + Vector2::new(0f32, self.size.y), Vector2::new(cooldown * self.size.x, 10f32), Color::BLACK);
     }
 }
 
@@ -47,10 +48,10 @@ impl MessageSpellIcons {
         }
     }
 
-    pub fn render(self: &Self, d: &mut RaylibDrawHandle) {
-        self.fast.render(d);
-        self.slow.render(d);
-        self.blink.render(d);
-        self.invuln.render(d);
+    pub fn render(self: &Self, d: &mut RaylibDrawHandle, blink_cd: f32) {
+        self.fast.render(d, 0f32);
+        self.slow.render(d, 0f32);
+        self.blink.render(d, blink_cd);
+        self.invuln.render(d, 0f32);
     }
 }

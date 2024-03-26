@@ -3,7 +3,7 @@
 extern crate serde_derive;
 
 use std::collections::{HashSet, VecDeque};
-use constants::MESSAGE_SIZE;
+use constants::{BLINK_COOLDOWN, MESSAGE_SIZE};
 use raylib::prelude::{Vector2,Color};
 
 pub mod shapes;
@@ -115,7 +115,7 @@ impl Unit {
     }
 
     pub fn cooldown(self: &Self) -> i32 {
-        900
+        BLINK_COOLDOWN
     }
 
     pub fn p0_colors(self: &Self) -> Color {

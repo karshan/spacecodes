@@ -555,7 +555,7 @@ fn main() -> std::io::Result<()> {
         }   
 
         if !cds.is_empty() {
-            d.draw_text(&format!("CD: {}", cds.iter().min().unwrap()), 20, 60, 20, Color::BLACK);
+            message_spell_icons.render(&mut d, (*cds.iter().min().unwrap() as f32)/(BLINK_COOLDOWN as f32));
         }
 
         for a in animations {
@@ -606,7 +606,6 @@ fn main() -> std::io::Result<()> {
         }
 
         d.draw_line(0, 768, 1023, 768, Color::BLACK);
-        message_spell_icons.render(&mut d);
     }
     Ok(())
 }
