@@ -741,7 +741,7 @@ fn main() -> std::io::Result<()> {
                 message_spell_icons.render(&mut d, (*cooldowns.iter().min().unwrap() as f32)/(BLINK_COOLDOWN as f32));
             }
         } else if game_state.sub_selection == Some(SubSelection::Ship) {
-            ship_spell_icons.render(&mut d, 0f32);
+            ship_spell_icons.render(&mut d);
         }
 
         for a in &interceptions {

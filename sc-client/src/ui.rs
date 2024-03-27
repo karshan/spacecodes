@@ -7,7 +7,6 @@ use sc_types::shapes::*;
 pub struct Icon {
     tex: Texture2D,
     pos: Vector2,
-    size: Vector2,
 }
 
 impl Icon {
@@ -15,16 +14,15 @@ impl Icon {
         Rect {
             x: self.pos.x as i32,
             y: self.pos.y as i32,
-            w: self.size.x as i32,
-            h: self.size.y as i32,
+            w: self.tex.width,
+            h: self.tex.height,
         }
     }
 }
 
 impl Icon {
-    pub fn render(self: &Self, d: &mut RaylibDrawHandle, cooldown: f32, tint: Color) {
+    pub fn render(self: &Self, d: &mut RaylibDrawHandle, tint: Color) {
         d.draw_texture_ex(&self.tex, self.pos, 0f32, 1f32, tint);
-        d.draw_rectangle_v(self.pos + Vector2::new(0f32, self.size.y), Vector2::new(cooldown * self.size.x, 10f32), Color::BLACK);
     }
 }
 
@@ -34,41 +32,49 @@ pub struct MessageSpellIcons {
 
 impl MessageSpellIcons {
     pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> MessageSpellIcons {
-        let icon_size = Vector2::new(50f32, 50f32);
         let start_pos = Vector2::new(394f32, 843f32);
         MessageSpellIcons {
             blink: Icon {
                 tex: rl.load_texture(&thread, "sc-client/assets/blink.png").unwrap(),
                 pos: start_pos,
-                size: icon_size
             }
         }
     }
 
     pub fn render(self: &Self, d: &mut RaylibDrawHandle, blink_cd: f32) {
-        self.blink.render(d, blink_cd, Color::WHITE);
+        self.blink.render(d, Color::WHITE);
+        d.draw_rectangle_v(self.blink.pos + Vector2::new(0f32, self.blink.tex.height as f32), Vector2::new(blink_cd * self.blink.tex.height as f32, 10f32), Color::BLACK);
     }
 }
 
-pub struct ShipSpellIcons {
-    intercept: Icon,
-}
+pub struct ShipSpellIcons([(Icon, char); 3]);
 
 impl ShipSpellIcons {
     pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> ShipSpellIcons {
-        let icon_size = Vector2::new(50f32, 50f32);
         let start_pos = Vector2::new(394f32, 843f32);
-        ShipSpellIcons {
-            intercept: Icon {
-                tex: rl.load_texture(&thread, "sc-client/assets/intercept.png").unwrap(),
-                pos: start_pos,
-                size: icon_size
-            }
-        }
+        let intercept_tex = rl.load_texture(&thread, "sc-client/assets/intercept.png").unwrap();
+        let gap = Vector2::new(12f32, 0f32) + Vector2::new(intercept_tex.width as f32, 0f32);
+        ShipSpellIcons([
+            (Icon {
+                tex: intercept_tex,
+                pos: start_pos
+            }, 'I'),
+            (Icon {
+                tex: rl.load_texture(&thread, "sc-client/assets/message.png").unwrap(),
+                pos: start_pos + gap
+            }, 'M'),
+            (Icon {
+                tex: rl.load_texture(&thread, "sc-client/assets/blinking_message.png").unwrap(),
+                pos: start_pos + gap.scale_by(2f32)
+            }, 'B')
+        ])
     }
 
-    pub fn render(self: &Self, d: &mut RaylibDrawHandle, intercept_cd: f32) {
-        self.intercept.render(d, intercept_cd, Color::WHITE);
+    pub fn render(self: &Self, d: &mut RaylibDrawHandle) {
+        for (icon, c) in &self.0 {
+            icon.render(d, Color::WHITE);
+            d.draw_text(&c.to_string(), icon.pos.x.round() as i32, icon.pos.y.round() as i32, 1, Color::BLACK);
+        }
     }
 }
 
@@ -77,8 +83,7 @@ pub fn text_icon(rl: &mut RaylibHandle, thread: &RaylibThread, s: &str, pos: Vec
     let tex = rl.load_texture_from_image(thread, &img)?;
     Ok(Icon {
         tex: tex,
-        pos: pos,
-        size: Vector2 { x: img.width as f32, y: img.height as f32 }
+        pos: pos
     })
 }
 
@@ -115,12 +120,12 @@ impl Shop {
         d.draw_line(863, 768, 863, 967, Color::BLACK);
         let col = Color::WHITE;
         let nogold = rcolor(255, 255, 255, 100);
-        self.blink.render(d, 0f32, if gold >= Item::Blink.cost() { col } else { nogold });
+        self.blink.render(d, if gold >= Item::Blink.cost() { col } else { nogold });
         if !upgrades.contains(&Upgrade::InterceptSpeed) {
-            self.intercept_speed.render(d, 0f32, if gold >= Upgrade::InterceptSpeed.cost() { col } else { nogold });
+            self.intercept_speed.render(d, if gold >= Upgrade::InterceptSpeed.cost() { col } else { nogold });
         }
         if !upgrades.contains(&Upgrade::InterceptRange) {
-            self.intercept_range.render(d, 0f32, if gold >= Upgrade::InterceptRange.cost() { col } else { nogold });
+            self.intercept_range.render(d, if gold >= Upgrade::InterceptRange.cost() { col } else { nogold });
         }
     }
 }
