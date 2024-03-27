@@ -12,9 +12,10 @@ pub enum AreaEnum {
 
 pub static START_FUEL: i32 = 3600;
 pub static FUEL_LOSS: i32 = 1; // per frame
-pub static GOLD_GAIN: f32 = 10f32/60f32;
+pub static PASSIVE_GOLD_GAIN: f32 = 10f32/60f32;
 pub static MSG_FUEL: i32 = 600;
 pub static MSG_PROTECTION_BUBBLE_RADIUS: f32 = 100f32;
+pub static MSG_DELIVERY_GOLD_BOUNTY: f32 = 100f32;
 pub static MESSAGE_SIZE: &Vector2 = &Vector2 { x: 20f32, y: 20f32 };
 pub static BLINK_COOLDOWN: i32 = 900;
 pub static INTERCEPT_RADIUS: f32 = 40f32;

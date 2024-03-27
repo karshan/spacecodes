@@ -135,6 +135,9 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
+
+    game_state.gold[p_id] += (num_my_units - game_state.my_units.len() as i32) as f32 * MSG_DELIVERY_GOLD_BOUNTY;
+    game_state.gold[other_id] += (num_other_units - game_state.other_units.len() as i32) as f32 * MSG_DELIVERY_GOLD_BOUNTY;
 }
 
 fn tick(game_state: &mut GameState) {
@@ -143,7 +146,7 @@ fn tick(game_state: &mut GameState) {
     }
 
     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
-    game_state.gold.iter_mut().for_each(|g| *g += GOLD_GAIN);
+    game_state.gold.iter_mut().for_each(|g| *g += PASSIVE_GOLD_GAIN);
 }
 
 fn collide_units(units: &Vec<Unit>, p: &Vector2, s: &Vector2) -> Vec<usize> {
