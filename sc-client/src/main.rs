@@ -105,21 +105,19 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
     }
 
     for intercept in &mut *interceptions {
-        if (frame - intercept.start_frame) as f32 >= INTERCEPT_DELAY {
-            let other_units = if p_id == intercept.player_id { &mut game_state.other_units } else { &mut game_state.my_units };
-            for unit in other_units.iter_mut() {
-                // Have to check unit.dead to avoid double counting interception kills (If 2 interceptions kill the same unit on the same frame)
-                if !unit.dead {
-                    let unit_cen = unit.pos + unit.size().scale_by(0.5f32);
-                    if (unit_cen.x - intercept.pos.x).powf(2f32) + (unit_cen.y - intercept.pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
-                        unit.dead = true;
-                        game_state.intercepted[intercept.player_id] += 1;
-                    }
+        let other_units = if p_id == intercept.player_id { &mut game_state.other_units } else { &mut game_state.my_units };
+        for unit in other_units.iter_mut() {
+            // Have to check unit.dead to avoid double counting interception kills (If 2 interceptions kill the same unit on the same frame)
+            if !unit.dead {
+                let unit_cen = unit.pos + unit.size().scale_by(0.5f32);
+                if (unit_cen.x - intercept.pos.x).powf(2f32) + (unit_cen.y - intercept.pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
+                    unit.dead = true;
+                    game_state.intercepted[intercept.player_id] += 1;
                 }
             }
         }
     }
-    interceptions.retain(|i| ((frame - i.start_frame) as f32) < INTERCEPT_DELAY);
+    interceptions.retain(|i| ((frame - i.start_frame) as f32) < INTERCEPT_EXPIRY);
     reap(game_state);
     game_state.other_units.retain(|u| !u.dead);
 }
@@ -331,6 +329,7 @@ fn main() -> std::io::Result<()> {
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
 
+    rl.set_exit_key(None);
     while !rl.window_should_close() {
         let mouse_position = rl.get_mouse_position();
         let fps = rl.get_fps();
@@ -576,14 +575,13 @@ fn main() -> std::io::Result<()> {
                         if cancel {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                             MouseState::None
-                        } else if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
-                            if game_state.gold[p_id] >= INTERCEPT_COST {
-                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: mouse_position }));
-                                rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
-                                MouseState::WaitReleaseLButton
-                            } else {
-                                MouseState::Intercept
-                            }
+                        } else if contains_point(&PLAY_AREA, &mouse_position) &&
+                                rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) &&
+                                !game_state.other_units.iter().any(|other_u| ((other_u.pos + other_u.size().scale_by(0.5f32)) - mouse_position).length() < MSG_PROTECTION_BUBBLE_RADIUS) &&
+                                game_state.gold[p_id] >= INTERCEPT_COST {
+                            unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: mouse_position }));
+                            rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
+                            MouseState::WaitReleaseLButton
                         } else {
                             MouseState::Intercept
                         }
@@ -695,6 +693,8 @@ fn main() -> std::io::Result<()> {
             } else {
                 d.draw_rectangle_v(u.pos, u.size(), c);
             }
+            let cen = u.pos + u.size().scale_by(0.5f32);
+            d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, MSG_PROTECTION_BUBBLE_RADIUS, c);
         }
 
         for s in &game_state.selection {
@@ -747,8 +747,7 @@ fn main() -> std::io::Result<()> {
         for a in &interceptions {
             // intercept radius - 10f32 is a hack to make it look like and intercept just clipping a message is successful
             // actually the interception circle needs to contain the center of the message to succeed
-            d.draw_circle_v(a.pos, ((INTERCEPT_RADIUS - 10f32) * ((frame_counter - a.start_frame) as f32))/INTERCEPT_DELAY, intercept_colors[a.player_id]);
-            d.draw_circle_lines(a.pos.x as i32, a.pos.y as i32, INTERCEPT_RADIUS - 10f32, Color::BLACK);
+            d.draw_circle_v(a.pos, INTERCEPT_RADIUS - 10f32, intercept_colors[a.player_id]);
         }
 
         match mouse_state {

@@ -1,10 +1,11 @@
 #Features
- * Show spell hotkeys in ui. and update icons to ones that are actually available
+ * draw intercept circle when targeting
+ * Show error message if trying to intercept without enough gold/too close to enemy unit
+ * Show message/blinking message spawn icons when ship is selected
  * Make intercept upgrades actually do something
  * Message death animation
 
 #Ideas
- * intercepts operate as an expring death trap and cannot be placed close to messages
  * can only intercept after unit turns
 
 #Bugs
