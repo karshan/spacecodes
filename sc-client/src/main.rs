@@ -108,6 +108,7 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
         if (frame - intercept.start_frame) as f32 >= INTERCEPT_DELAY {
             let other_units = if p_id == intercept.player_id { &mut game_state.other_units } else { &mut game_state.my_units };
             for unit in other_units.iter_mut() {
+                // Have to check unit.dead to avoid double counting interception kills (If 2 interceptions kill the same unit on the same frame)
                 if !unit.dead {
                     let unit_cen = unit.pos + unit.size().scale_by(0.5f32);
                     if (unit_cen.x - intercept.pos.x).powf(2f32) + (unit_cen.y - intercept.pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
@@ -129,7 +130,7 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
 
-    game_state.my_units.iter_mut().filter(|u| !u.dead && u.rect().collide(station(u.player_id)))
+    game_state.my_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
         .for_each(|u| u.dead = true);
     reap(game_state);
     game_state.other_units.retain(|u| !u.rect().collide(station(u.player_id)));
@@ -470,10 +471,8 @@ fn main() -> std::io::Result<()> {
                                 },
                                 KeyboardKey::KEY_SPACE => {
                                     for (u_id, u) in selected_units(&game_state) {
-                                        if !u.dead {
-                                            if u.cooldown <= 0 && u.blinking.is_some() {
-                                                unsent_pkt.push(GameCommand::Blink(BlinkCommand { u_id }));
-                                            }
+                                        if u.cooldown <= 0 && u.blinking.is_some() {
+                                            unsent_pkt.push(GameCommand::Blink(BlinkCommand { u_id }));
                                         }
                                     }
                                 },
