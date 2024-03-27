@@ -26,7 +26,7 @@ struct Interception {
 }
 
 fn blink_unit(unit: &mut Unit) -> () {
-    unit.blinking = false;
+    unit.blinking.iter_mut().for_each(|b| *b = false);
     if (unit.path[0] - unit.pos).length() < BLINK_RANGE {
         let mut acc = (unit.path[0] - unit.pos).length();
         let mut p0 = unit.path.pop_front().unwrap();
@@ -63,7 +63,12 @@ fn move_unit(unit: &mut Unit) -> () {
 }
 
 fn move_units(units: &mut Vec<Unit>) {
-    units.iter_mut().for_each(|unit| if unit.blinking { blink_unit(unit) } else { move_unit(unit) });
+    units.iter_mut().for_each(|unit|
+        match unit.blinking {
+            Some(true) => blink_unit(unit),
+            _ => move_unit(unit)
+        }
+    );
 }
 
 fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_id: usize, interceptions: &mut Vec<Interception>, frame: i64) {
@@ -74,15 +79,26 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
                 GameCommand::Blink(BlinkCommand { u_id }) => {
                     if *u_id < units.len() {
                         units[*u_id].cooldown = units[*u_id].cooldown();
-                        units[*u_id].blinking = true;
+                        units[*u_id].blinking = Some(true);
                     }
                 },
-                GameCommand::Spawn(SpawnMsgCommand { path, player_id }) => {
-                    units.push(Unit { dead: false, player_id: *player_id, pos: path[0], path: path.clone(), blinking: false, cooldown: 0 });
+                GameCommand::Spawn(SpawnMsgCommand { path, player_id, blink_imbued }) => {
+                    if *blink_imbued {
+                        game_state.items[i].entry(Item::Blink).and_modify(|e| *e -= 1).or_insert(-1);
+                    }
+                    units.push(Unit { dead: false, player_id: *player_id, pos: path[0], path: path.clone(), blinking: if *blink_imbued { Some(false) } else { None }, cooldown: 0 });
                 },
                 GameCommand::Intercept(InterceptCommand { pos }) => {
                     interceptions.push(Interception { pos: pos.clone(), start_frame: frame, player_id: i });
                     game_state.gold[i] -= INTERCEPT_COST;
+                },
+                GameCommand::BuyUpgrade(u) => {
+                    game_state.upgrades[i].insert(*u);
+                    game_state.gold[i] -= u.cost();
+                },
+                GameCommand::BuyItem(item) => {
+                    game_state.items[i].entry(*item).and_modify(|e| *e += 1).or_insert(1);
+                    game_state.gold[i] -= item.cost();
                 }
             }
         }
@@ -236,13 +252,14 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vec
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let max_input_queue = 10;
-        let area_colors = HashMap::from([
+    let area_colors = HashMap::from([
         (AreaEnum::P0Spawn, Color::from_hex("0077B6").unwrap()),
         (AreaEnum::P0Station, Color::from_hex("0077B6").unwrap()),
         (AreaEnum::P1Spawn, Color::from_hex("1B4332").unwrap()),
         (AreaEnum::P1Station, Color::from_hex("1B4332").unwrap()),
         (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
     ]);
+    let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 100), rcolor(0x74, 0xC6, 0x9D, 100)];
     let msg_spawn_pos = [Vector2 { x: 502f32, y: 249f32 }, Vector2 { x: 627f32, y: 374f32 }];
 
     let args: Vec<String> = env::args().collect();
@@ -280,13 +297,15 @@ fn main() -> std::io::Result<()> {
         fuel: [START_FUEL; 2],
         intercepted: [0; 2],
         gold: [0f32; 2],
+        upgrades: [HashSet::new(), HashSet::new()],
+        items: [HashMap::new(), HashMap::new()]
     };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i64 = 0;
+    // TODO All this netcode related stuff should be abstracted into a single type
     let mut sent_frame = 0;
     let mut frame_state = FrameState::Neither;
-    // TODO All this netcode related stuff should be abstracted into a single type
     let mut unsent_pkt = vec![];
     let mut unacked_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut future_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
@@ -297,7 +316,7 @@ fn main() -> std::io::Result<()> {
     let mut interceptions = vec![];
     enum MouseState {
         Drag(Vector2),
-        Path(VecDeque<Vector2>),
+        Path(VecDeque<Vector2>, bool),
         Intercept,
         WaitReleaseLButton,
         None
@@ -305,6 +324,9 @@ fn main() -> std::io::Result<()> {
     let mut mouse_state: MouseState = MouseState::None;
     let mut ended = None;
     let mut packets_ps = WindowAvg::new();
+    let mut shop_open = false;
+    let shop = Shop::new(&mut rl, &thread).unwrap();
+
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
 
@@ -347,6 +369,7 @@ fn main() -> std::io::Result<()> {
                         interceptions = vec![];
                         mouse_state = MouseState::None;
                         frame_state = FrameState::Neither;
+                        shop_open = false;
                         game_state = GameState {
                             my_units: vec![],
                             other_units: vec![],
@@ -355,6 +378,8 @@ fn main() -> std::io::Result<()> {
                             fuel: [START_FUEL; 2],
                             intercepted: [0; 2],
                             gold: [0f32; 2],
+                            upgrades: [HashSet::new(), HashSet::new()],
+                            items: [HashMap::new(), HashMap::new()]
                         };
                         ClientState::Started
                     },
@@ -396,7 +421,7 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                let mut start_message_path = false;
+                let mut start_message_path: Option<bool> = None;
                 let mut cancel = false;
                 let mut start_intercept = false;
                 loop {
@@ -423,11 +448,22 @@ fn main() -> std::io::Result<()> {
                                         game_state.sub_selection = Some(choices[(choices.iter().enumerate().find(|(_, c)| **c == subsel).unwrap().0 + 1) % choices.len()]);
                                     }
                                 },
-                                KeyboardKey::KEY_M => { start_message_path = game_state.sub_selection == Some(SubSelection::Ship) },
+                                KeyboardKey::KEY_M => {
+                                    if game_state.sub_selection == Some(SubSelection::Ship) {
+                                        start_message_path = Some(false)
+                                    }
+                                },
+                                KeyboardKey::KEY_B => {
+                                    if game_state.sub_selection == Some(SubSelection::Ship) &&
+                                        *game_state.items[p_id].entry(Item::Blink).or_insert(0) > 0 {
+                                        start_message_path = Some(true)
+                                    }
+                                },
                                 KeyboardKey::KEY_I => { start_intercept = game_state.sub_selection == Some(SubSelection::Ship) },
+                                KeyboardKey::KEY_S => { shop_open = !shop_open }
                                 KeyboardKey::KEY_Q => {
                                     match mouse_state {
-                                        MouseState::Path(_) => { cancel = true }
+                                        MouseState::Path(_, _) => { cancel = true }
                                         MouseState::Intercept => { cancel = true }
                                         _ => {}
                                     }
@@ -435,7 +471,7 @@ fn main() -> std::io::Result<()> {
                                 KeyboardKey::KEY_SPACE => {
                                     for (u_id, u) in selected_units(&game_state) {
                                         if !u.dead {
-                                            if u.cooldown <= 0 {
+                                            if u.cooldown <= 0 && u.blinking.is_some() {
                                                 unsent_pkt.push(GameCommand::Blink(BlinkCommand { u_id }));
                                             }
                                         }
@@ -448,12 +484,31 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
+                // TODO && contains_point(SHOP_AREA, mouse_position)
+                if shop_open && rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
+                    if let Some(shop_item) = shop.click(mouse_position) {
+                        match shop_item {
+                            ShopItem::Item(i) => {
+                                if game_state.gold[p_id] >= i.cost() {
+                                    unsent_pkt.push(GameCommand::BuyItem(i))
+                                }
+                            },
+                            ShopItem::Upgrade(u) => {
+                                if !game_state.upgrades[p_id].contains(&u) &&
+                                        game_state.gold[p_id] >= u.cost() {
+                                    unsent_pkt.push(GameCommand::BuyUpgrade(u))
+                                }
+                            }
+                        }
+                    }
+                }
+
                 mouse_state = match mouse_state {
                     MouseState::None => {
                         if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
                             MouseState::Drag(mouse_position)
-                        } else if start_message_path {
-                            MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]))
+                        } else if start_message_path.is_some() {
+                            MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]), start_message_path.unwrap())
                         } else if start_intercept {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_CROSSHAIR);
                             MouseState::Intercept
@@ -498,7 +553,7 @@ fn main() -> std::io::Result<()> {
                             MouseState::None
                         }
                     },
-                    MouseState::Path(mut path) => {
+                    MouseState::Path(mut path, blink_imbued) => {
                         if cancel {
                             MouseState::None
                         } else {
@@ -508,16 +563,16 @@ fn main() -> std::io::Result<()> {
                                     path.push_back(m);
                                     path.push_back(eff_mouse_pos);
                                     if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) {
-                                        unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
+                                        unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone(), blink_imbued: blink_imbued }));
                                         MouseState::None
                                     } else {
-                                        MouseState::Path(path)
+                                        MouseState::Path(path, blink_imbued)
                                     }
                                 } else {
-                                    MouseState::Path(path)
+                                    MouseState::Path(path, blink_imbued)
                                 }
                             } else {
-                                MouseState::Path(path)
+                                MouseState::Path(path, blink_imbued)
                             }
                         }
                     },
@@ -684,7 +739,8 @@ fn main() -> std::io::Result<()> {
         for a in &interceptions {
             // intercept radius - 10f32 is a hack to make it look like and intercept just clipping a message is successful
             // actually the interception circle needs to contain the center of the message to succeed
-            d.draw_circle(a.pos.x.round() as i32, a.pos.y.round() as i32, ((INTERCEPT_RADIUS - 10f32) * ((frame_counter - a.start_frame) as f32))/INTERCEPT_DELAY, Color::BLACK);
+            d.draw_circle_v(a.pos, ((INTERCEPT_RADIUS - 10f32) * ((frame_counter - a.start_frame) as f32))/INTERCEPT_DELAY, intercept_colors[a.player_id]);
+            d.draw_circle_lines(a.pos.x as i32, a.pos.y as i32, INTERCEPT_RADIUS - 10f32, Color::BLACK);
         }
 
         match mouse_state {
@@ -693,9 +749,9 @@ fn main() -> std::io::Result<()> {
                 let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
                 d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::GREEN)
             },
-            MouseState::Path(ref path) => {
+            MouseState::Path(ref path, blink_imbued) => {
                 let mut p = path[0] + MESSAGE_SIZE.scale_by(0.5f32);
-                let col = rcolor(0, 255, 0, 100);
+                let col = if blink_imbued { rcolor(0, 0, 255, 100) } else { rcolor(0, 255, 0, 100) };
                 let bad_col = rcolor(255, 0, 0, 100);
                 for i in 1..path.len() {
                     let next_p = path[i] + MESSAGE_SIZE.scale_by(0.5f32);
@@ -732,6 +788,11 @@ fn main() -> std::io::Result<()> {
         d.draw_line(0, 768, 1023, 768, Color::BLACK);
         d.draw_text(&format!("{:?}", game_state.sub_selection), 20, 768, 20, Color::BLACK);
         d.draw_text(&format!("{}", game_state.gold[p_id].round()), 20, 788, 20, Color::BLACK);
+        if shop_open {
+            shop.render(&mut d, &game_state.upgrades[p_id], game_state.gold[p_id]);
+        }
+        d.draw_text(&format!("{:?}", game_state.upgrades[p_id]), 20, 808, 20, Color::BLACK);
+        d.draw_text(&format!("{:?}", game_state.items[p_id]), 20, 828, 20, Color::BLACK);
     }
     Ok(())
 }

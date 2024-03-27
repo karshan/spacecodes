@@ -1,6 +1,7 @@
 [Features]
- - Upgrades
- - Show spell hotkeys in ui
+ - Show spell hotkeys in ui. and update icons to ones that are actually available
+ - Don't allow station selection
+ - Display blinking messages differently
 
 [Bugs]
  - Recover when packets from both clients are dropped on the same frame
@@ -10,6 +11,9 @@
 [Hygiene]
  - Remove unit.dead (atleast don't check it all over the place)
  - Use with_serde feature of raylib to get Vector2 serde instance
+ - game_state.selection type should be isomorhpic to (bool, bool, Vec<unit_id>)
+ - unit.blinking: Option<bool> is ugly make a better type for this
+ - shop ui code isn't great it should probably use a HashMap<ShopItem, Icon>
 
 [Performance]
  - No/minumum heap use

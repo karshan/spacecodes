@@ -1,9 +1,9 @@
 // extern crate serde;
 extern crate serde_derive;
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use constants::{BLINK_COOLDOWN, MESSAGE_SIZE};
-use raylib::prelude::{Vector2,Color};
+use raylib::prelude::{Vector2, Color, rcolor};
 
 pub mod shapes;
 use serde::{Deserialize, Serialize};
@@ -62,15 +62,52 @@ pub enum SubSelection {
     Ship
 }
 
+pub enum ShopItem {
+    Item(Item),
+    Upgrade(Upgrade)
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum Upgrade {
+    InterceptSpeed,
+    InterceptRange
+}
+
+impl Upgrade {
+    pub fn cost(self: &Self) -> f32 {
+        match self {
+            Upgrade::InterceptSpeed => 100f32,
+            Upgrade::InterceptRange => 200f32,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum Item {
+    Blink
+}
+
+impl Item {
+    pub fn cost(self: &Self) -> f32 {
+        match self {
+            Item::Blink => 50f32
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct GameState {
     pub my_units: Vec<Unit>,
     pub other_units: Vec<Unit>,
+    // TODO this should actually be (bool, bool, HashSet<unit_id>)
+    // currently it is possible to select mutliple ships/stations
     pub selection: HashSet<Selection>,
     pub sub_selection: Option<SubSelection>,
     pub fuel: [i32; 2],
     pub intercepted: [u8; 2],
     pub gold: [f32; 2],
+    pub upgrades: [HashSet<Upgrade>; 2],
+    pub items: [HashMap<Item, i16>; 2]
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -95,7 +132,7 @@ pub struct Unit {
     pub pos: Vector2,
     #[serde_nested(sub = "Vector2", serde(with = "Vector2Def"))]
     pub path: VecDeque<Vector2>,
-    pub blinking: bool,
+    pub blinking: Option<bool>,
     pub cooldown: i32,
 }
 
@@ -127,11 +164,11 @@ impl Unit {
     }
 
     pub fn p0_colors(self: &Self) -> Color {
-        Color::from_hex("90E0EF").unwrap()
+        rcolor(0x90, 0xE0, 0xEF, 255)
     }
 
     pub fn p1_colors(self: &Self) -> Color {
-        Color::from_hex("74C69D").unwrap()
+        rcolor(0x74, 0xC6, 0x9D, 255)
     }
 }
 
@@ -151,7 +188,8 @@ pub struct InterceptCommand {
 pub struct SpawnMsgCommand {
     pub player_id: usize,
     #[serde_nested(sub = "Vector2", serde(with = "Vector2Def"))]
-    pub path: VecDeque<Vector2>
+    pub path: VecDeque<Vector2>,
+    pub blink_imbued: bool
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,6 +197,8 @@ pub enum GameCommand {
     Blink(BlinkCommand),
     Spawn(SpawnMsgCommand),
     Intercept(InterceptCommand),
+    BuyUpgrade(Upgrade),
+    BuyItem(Item),
 }
 
 #[derive(Deserialize, Serialize)]
