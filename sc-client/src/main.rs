@@ -526,9 +526,6 @@ fn main() -> std::io::Result<()> {
                             if ship(p_id).collide(&selection_rect) {
                                 in_box.push(Selection::Ship);
                             }
-                            if station(p_id).collide(&selection_rect) {
-                                in_box.push(Selection::Station);
-                            }
                             if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
                                 game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
                             } else {
