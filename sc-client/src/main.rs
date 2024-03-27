@@ -732,11 +732,14 @@ fn main() -> std::io::Result<()> {
             let cooldowns: Vec<i32> =
                 game_state.selection.iter().map(
                     |s| if let Selection::Unit(uid) = s {
-                        Some(game_state.my_units[*uid].cooldown)
+                        let u = &game_state.my_units[*uid];
+                        u.blinking.map(|_| game_state.my_units[*uid].cooldown)
                     } else { None }
                 ).flatten().collect();
 
-            message_spell_icons.render(&mut d, (*cooldowns.iter().min().unwrap() as f32)/(BLINK_COOLDOWN as f32));
+            if !cooldowns.is_empty() {
+                message_spell_icons.render(&mut d, (*cooldowns.iter().min().unwrap() as f32)/(BLINK_COOLDOWN as f32));
+            }
         } else if game_state.sub_selection == Some(SubSelection::Ship) {
             ship_spell_icons.render(&mut d, 0f32);
         }

@@ -29,46 +29,24 @@ impl Icon {
 }
 
 pub struct MessageSpellIcons {
-    fast: Icon,
-    slow: Icon,
-    blink: Icon,
-    invuln: Icon,
+    blink: Icon
 }
 
 impl MessageSpellIcons {
     pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> MessageSpellIcons {
         let icon_size = Vector2::new(50f32, 50f32);
         let start_pos = Vector2::new(394f32, 843f32);
-        let gap = Vector2::new(icon_size.x + 12f32, 0f32);
         MessageSpellIcons {
-            fast: Icon {
-                tex: rl.load_texture(&thread, "sc-client/assets/fast.png").unwrap(),
-                pos: start_pos,
-                size: icon_size
-            },
-            slow: Icon {
-                tex: rl.load_texture(&thread, "sc-client/assets/slow.png").unwrap(),
-                pos: start_pos + gap,
-                size: icon_size
-            },
             blink: Icon {
                 tex: rl.load_texture(&thread, "sc-client/assets/blink.png").unwrap(),
-                pos: start_pos + gap.scale_by(2f32),
+                pos: start_pos,
                 size: icon_size
-            },
-            invuln: Icon {
-                tex: rl.load_texture(&thread, "sc-client/assets/invuln.png").unwrap(),
-                pos: start_pos + gap.scale_by(3f32),
-                size: icon_size
-            },
+            }
         }
     }
 
     pub fn render(self: &Self, d: &mut RaylibDrawHandle, blink_cd: f32) {
-        self.fast.render(d, 0f32, Color::WHITE);
-        self.slow.render(d, 0f32, Color::WHITE);
         self.blink.render(d, blink_cd, Color::WHITE);
-        self.invuln.render(d, 0f32, Color::WHITE);
     }
 }
 

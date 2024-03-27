@@ -1,0 +1,29 @@
+#Features
+ * Show spell hotkeys in ui. and update icons to ones that are actually available
+ * Make intercept upgrades actually do something
+ * Message death animation
+
+#Ideas
+ * intercepts operate as an expring death trap and cannot be placed close to messages
+ * can only intercept after unit turns
+
+#Bugs
+ * Recover when packets from both clients are dropped on the same frame
+ * [P4] move_unit() moves slower around turns
+ * It is possible to send 2+ blink commands or intercept commands etc. in the same frame because the cooldown/gold doesn't update until apply_updates() is called
+
+#Hygiene
+ * Unit.cooldown should only exist for blinking messages
+ * shop ui code isn't great it should probably use a HashMap<ShopItem, Icon>
+ * Icon in ui supports cooldown rectangles, this should be moved to another type
+ * game_state.selection type should be isomorhpic to (bool, bool, Vec<unit_id>)
+ * unit.blinking: Option<bool> is ugly make a better type for this
+ * Use with_serde feature of raylib to get Vector2 serde instance
+ * Remove unit.dead, use a to_kill: Vec<unit_id> whenever units can die and update them immediately
+
+#Performance
+ * No/minumum heap use
+ * Packed bools and structs
+ * maximise cache utilization, iterate through units just once per frame
+ * function inlining?
+ * frame type i64->u32
