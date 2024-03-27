@@ -560,7 +560,7 @@ fn main() -> std::io::Result<()> {
                                     path.push_back(eff_mouse_pos);
                                     if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) {
                                         unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone(), blink_imbued: blink_imbued }));
-                                        MouseState::None
+                                        MouseState::WaitReleaseLButton
                                     } else {
                                         MouseState::Path(path, blink_imbued)
                                     }
@@ -690,14 +690,23 @@ fn main() -> std::io::Result<()> {
 
         for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
             let c = if u.player_id == 0 { u.p0_colors() } else { u.p1_colors() };
-            d.draw_rectangle_v(u.pos, u.size(), c);
+            if u.blinking.is_some() {
+                d.draw_circle_v(u.pos + u.size().scale_by(0.5f32), u.size().x/2f32, c);
+            } else {
+                d.draw_rectangle_v(u.pos, u.size(), c);
+            }
         }
 
         for s in &game_state.selection {
             match s {
                 Selection::Unit(u_id) => {
                     let u = &game_state.my_units[*u_id];
-                    d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, u.size().x.round() as i32, u.size().y.round() as i32, Color::BLACK);
+                    if u.blinking.is_some() {
+                        let cen = u.pos + u.size().scale_by(0.5f32);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32, Color::BLACK);
+                    } else {
+                        d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, u.size().x.round() as i32, u.size().y.round() as i32, Color::BLACK);
+                    }
                     if !u.path.is_empty() {
                         let mut p = u.pos + u.size().scale_by(0.5f32);
                         let col = rcolor(0, 255, 0, 100);

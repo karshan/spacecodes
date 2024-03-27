@@ -1,7 +1,5 @@
 [Features]
  - Show spell hotkeys in ui. and update icons to ones that are actually available
- - Don't allow station selection
- - Display blinking messages differently
  - Make intercept upgrades actually do something
 
 [Ideas]
