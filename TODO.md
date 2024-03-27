@@ -1,4 +1,5 @@
 #Features 
+ * bounty runes
  * Show error message if trying to intercept without enough gold/too close to enemy unit
  * Visual feedback on spell icons when pressing hotkey
  * Allow clicking spell icons

@@ -298,7 +298,7 @@ fn main() -> std::io::Result<()> {
         sub_selection: None,
         fuel: [START_FUEL; 2],
         intercepted: [0; 2],
-        gold: [0f32; 2],
+        gold: [STARTING_GOLD; 2],
         upgrades: [HashSet::new(), HashSet::new()],
         items: [HashMap::new(), HashMap::new()]
     };
