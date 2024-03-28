@@ -12,5 +12,6 @@ serde = "1.0.197"
 rmp-serde = "1.1.2"
 num-traits = "0.2.18"
 crc32fast = "1.4.0"
-petgraph = "0.6.4"
-
+rand_chacha = "0.3.1"
+rand_core =  { version = "0.6.4", features = ["getrandom"] }
+rand = "0.8.5"

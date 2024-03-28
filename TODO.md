@@ -1,6 +1,7 @@
 #Features 
- * bounty runes
+ * bounty runes 100/200g
  * Show error message if trying to intercept without enough gold/too close to enemy unit
+ * Only show blink message icon if enough >0 Item::Blink's
  * Visual feedback on spell icons when pressing hotkey
  * Allow clicking spell icons
  * draw intercept circle when targeting
@@ -11,11 +12,14 @@
  * can only intercept after unit turns
 
 #Bugs
+ * message and blinking message should be the same shape
  * Recover when packets from both clients are dropped on the same frame
  * [P4] move_unit() moves slower around turns
  * It is possible to send 2+ blink commands or intercept commands etc. in the same frame because the cooldown/gold doesn't update until apply_updates() is called
 
 #Hygiene
+ * game_state.{my_units, other_units} -> game_state.units: [Vec<Unit>; 2]
+ * Fix main::serialize_state() for game_state.upgrades and .items
  * Unit.cooldown should only exist for blinking messages
  * shop ui code isn't great it should probably use a HashMap<ShopItem, Icon>
  * Icon in ui supports cooldown rectangles, this should be moved to another type

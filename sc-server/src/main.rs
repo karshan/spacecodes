@@ -5,6 +5,8 @@ use sc_types::*;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Instant;
+use rand_chacha::*;
+use rand_core::*;
 
 enum ServerState {
     Waiting,
@@ -115,13 +117,14 @@ fn main() -> io::Result<()> {
             match state {
                 ServerState::Waiting => {
                     if conn_states.len() >= 2 {
+                        let rng = ChaCha20Rng::from_entropy();
                         instant = Instant::now();
                         for (peer, seq_state) in conn_states.iter_mut() {
                             let server_pkt = ServerPkt {
                                 seq: seq_state.send_seq,
                                 ack: seq_state.send_ack,
                                 server_time: instant.elapsed().as_secs_f64(),
-                                msg: ServerEnum::Start,
+                                msg: ServerEnum::Start { rng_seed: rng.get_seed() }
                             };
                             match  rmp_serde::encode::to_vec(&server_pkt) {
                                 Ok(buf) => {

@@ -107,7 +107,9 @@ pub struct GameState {
     pub intercepted: [u8; 2],
     pub gold: [f32; 2],
     pub upgrades: [HashSet<Upgrade>; 2],
-    pub items: [HashMap<Item, i16>; 2]
+    pub items: [HashMap<Item, i16>; 2],
+    pub bounties: Vec<Vector2>,
+    pub next_bounty: u32,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -220,6 +222,6 @@ pub struct ServerPkt {
 #[derive(Deserialize, Serialize)]
 pub enum ServerEnum {
     Welcome { handshake_start_time: f64, player_id: usize },
-    Start,
+    Start { rng_seed: [u8; 32] },
     UpdateOtherTarget { updates: VecDeque<(i64, Vec<GameCommand>)>, frame: i64, frame_ack: i64 }
 }

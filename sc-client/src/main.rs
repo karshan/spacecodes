@@ -3,10 +3,14 @@ use std::cmp::{min, max};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
 use pathfinding::path_collides;
+use rand_core::SeedableRng;
 use raylib::prelude::*;
 use sc_types::*;
 use sc_types::shapes::*;
 extern crate rmp_serde as rmps;
+use rand_chacha::*;
+use rand_core::*;
+use rand::*;
 
 mod util;
 mod pathfinding;
@@ -218,6 +222,13 @@ fn serialize_state(game_state: &GameState, p_id: usize) -> Result<Vec<u8>, rmps:
     }
     v.append(&mut rmp_serde::encode::to_vec(&game_state.fuel)?);
     v.append(&mut rmp_serde::encode::to_vec(&game_state.intercepted)?);
+    v.append(&mut rmp_serde::encode::to_vec(&game_state.gold)?);
+    // FIXME serialize upgrades and items correctly (easiest might be to convert to sorted vec and serialize)
+    let upg: Vec<usize> = game_state.upgrades.iter().map(|hs| hs.len()).collect();
+    v.append(&mut rmp_serde::encode::to_vec(&upg)?);
+    let itms: Vec<i16> = game_state.items.iter().map(|hm| hm.get(&Item::Blink).map(|v| *v).or(Some(0))).flatten().collect();
+    v.append(&mut rmp_serde::encode::to_vec(&itms)?);
+    v.append(&mut rmp_serde::encode::to_vec(&game_state.next_bounty)?);
     Ok(v)
 }
 
@@ -249,6 +260,36 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vec
             None
         }
     }
+}
+
+fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
+    if game_state.bounties.len() < MAX_BOUNTIES {
+        let mut b = Vector2::new(rng.gen_range(0..1024) as f32, rng.gen_range(0..768) as f32);
+        // Check against play area so the entire bounty rect is inside
+        while !PLAY_AREA.contains(&bounty_rect(&b)) ||
+                GAME_MAP[0].1.collide(&bounty_rect(&b)) {
+            b = Vector2::new(rng.gen_range(0..1024) as f32, rng.gen_range(0..768) as f32);
+        }
+        game_state.bounties.push(b);
+    }
+}
+
+fn bounty_rect(b: &Vector2) -> Rect<i32> {
+    Rect { x: b.x.round() as i32, y: b.y.round() as i32, w: BOUNTY_SIZE.x.round() as i32, h: BOUNTY_SIZE.y.round() as i32 }
+}
+
+fn collide_bounties(game_state: &mut GameState, p_id: usize) {
+    let other_id = (p_id + 1) % 2;
+    for b in &game_state.bounties {
+        if game_state.my_units.iter().any(|u| u.rect().collide(&bounty_rect(b))) {
+            game_state.gold[p_id] += BOUNTY_GOLD;
+        }
+        if game_state.other_units.iter().any(|u| u.rect().collide(&bounty_rect(b))) {
+            game_state.gold[other_id] += BOUNTY_GOLD;
+        }
+    }
+    game_state.bounties.retain(|b| !game_state.my_units.iter().any(|u| u.rect().collide(&bounty_rect(b))) &&
+        !game_state.other_units.iter().any(|u| u.rect().collide(&bounty_rect(b))))
 }
 
 fn main() -> std::io::Result<()> {
@@ -300,7 +341,9 @@ fn main() -> std::io::Result<()> {
         intercepted: [0; 2],
         gold: [STARTING_GOLD; 2],
         upgrades: [HashSet::new(), HashSet::new()],
-        items: [HashMap::new(), HashMap::new()]
+        items: [HashMap::new(), HashMap::new()],
+        bounties: vec![],
+        next_bounty: 0
     };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
@@ -327,6 +370,7 @@ fn main() -> std::io::Result<()> {
     let mut ended = None;
     let mut packets_ps = WindowAvg::new();
     let mut shop_open = false;
+    let mut rng: ChaCha20Rng = ChaCha20Rng::from_seed([0; 32]);
     let shop = Shop::new(&mut rl, &thread).unwrap();
 
     let socket = UdpSocket::bind("0.0.0.0:0")?;
@@ -361,7 +405,7 @@ fn main() -> std::io::Result<()> {
                 let resp = socket_recv(&socket, &server[0], &mut seq_state);
                 match resp {
                     None => ClientState::Waiting,
-                    Some(ServerEnum::Start) => {
+                    Some(ServerEnum::Start { rng_seed }) => {
                         frame_counter = 0;
                         sent_frame = 0;
                         unsent_pkt = vec![];
@@ -373,6 +417,7 @@ fn main() -> std::io::Result<()> {
                         mouse_state = MouseState::None;
                         frame_state = FrameState::Neither;
                         shop_open = false;
+                        rng = ChaCha20Rng::from_seed(rng_seed);
                         game_state = GameState {
                             my_units: vec![],
                             other_units: vec![],
@@ -382,7 +427,9 @@ fn main() -> std::io::Result<()> {
                             intercepted: [0; 2],
                             gold: [0f32; 2],
                             upgrades: [HashSet::new(), HashSet::new()],
-                            items: [HashMap::new(), HashMap::new()]
+                            items: [HashMap::new(), HashMap::new()],
+                            bounties: vec![],
+                            next_bounty: BOUNTY_TIME_MIN + (rng.next_u32() % BOUNTY_TIME_RANGE) as u32
                         };
                         ClientState::Started
                     },
@@ -616,11 +663,16 @@ fn main() -> std::io::Result<()> {
 
                 if frame_state == FrameState::Both || (frame_counter % 2 == 1) {
                     apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
+                    if frame_counter as u32 == game_state.next_bounty {
+                        game_state.next_bounty = frame_counter as u32 + BOUNTY_TIME_MIN + (rng.next_u32() % BOUNTY_TIME_RANGE);
+                        add_bounty(&mut game_state, &mut rng);
+                    }
                     recvd_pkt = vec![];
                     sent_pkt = vec![];
                     move_units(&mut game_state.my_units);
                     move_units(&mut game_state.other_units);
                     add_fuel(&mut game_state, p_id);
+                    collide_bounties(&mut game_state, p_id);
                     tick(&mut game_state);
                     frame_counter += 1;
                     if frame_counter % 60 == 0 {
@@ -751,6 +803,10 @@ fn main() -> std::io::Result<()> {
             // intercept radius - 10f32 is a hack to make it look like and intercept just clipping a message is successful
             // actually the interception circle needs to contain the center of the message to succeed
             d.draw_circle_v(a.pos, INTERCEPT_RADIUS - 10f32, intercept_colors[a.player_id]);
+        }
+
+        for b in &game_state.bounties {
+            d.draw_rectangle_v(b, BOUNTY_SIZE, BOUNTY_COLOR);
         }
 
         match mouse_state {
