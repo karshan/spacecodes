@@ -24,8 +24,8 @@
  * game_state.{my_units, other_units} -> game_state.units: [Vec<Unit>; 2]
  * Fix main::serialize_state() for game_state.upgrades and .items
  * Unit.cooldown should only exist for blinking messages
+ * ShipSpellIcons should be HashMap<ShipSpells, Icon>
  * shop ui code isn't great it should probably use a HashMap<ShopItem, Icon>
- * Icon in ui supports cooldown rectangles, this should be moved to another type
  * game_state.selection type should be isomorhpic to (bool, bool, Vec<unit_id>)
  * unit.blinking: Option<bool> is ugly make a better type for this
  * Use with_serde feature of raylib to get Vector2 serde instance

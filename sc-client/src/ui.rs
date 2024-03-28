@@ -70,9 +70,9 @@ impl ShipSpellIcons {
         ])
     }
 
-    pub fn render(self: &Self, d: &mut RaylibDrawHandle) {
+    pub fn render(self: &Self, d: &mut RaylibDrawHandle, blinks: i16) {
         for (icon, c) in &self.0 {
-            icon.render(d, Color::WHITE);
+            icon.render(d, if *c != 'B' || blinks > 0 { Color::WHITE } else { rcolor(255, 255, 255, 100) });
             d.draw_text(&c.to_string(), icon.pos.x.round() as i32, icon.pos.y.round() as i32, 1, Color::BLACK);
         }
     }
