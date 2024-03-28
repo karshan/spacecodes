@@ -377,6 +377,7 @@ fn main() -> std::io::Result<()> {
     socket.set_nonblocking(true)?;
 
     rl.set_exit_key(None);
+    let mut intercept_err = false;
     while !rl.window_should_close() {
         let mouse_position = rl.get_mouse_position();
         let fps = rl.get_fps();
@@ -551,6 +552,7 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
+                intercept_err = false;
                 mouse_state = match mouse_state {
                     MouseState::None => {
                         if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
@@ -627,13 +629,17 @@ fn main() -> std::io::Result<()> {
                         if cancel {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                             MouseState::None
-                        } else if contains_point(&PLAY_AREA, &mouse_position) &&
-                                rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) &&
-                                !game_state.other_units.iter().any(|other_u| ((other_u.pos + other_u.size().scale_by(0.5f32)) - mouse_position).length() < MSG_PROTECTION_BUBBLE_RADIUS) &&
-                                game_state.gold[p_id] >= INTERCEPT_COST {
-                            unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: mouse_position }));
-                            rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
-                            MouseState::WaitReleaseLButton
+                        } else if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                            if contains_point(&PLAY_AREA, &mouse_position) &&
+                                    !game_state.other_units.iter().any(|other_u| ((other_u.pos + other_u.size().scale_by(0.5f32)) - mouse_position).length() < MSG_PROTECTION_BUBBLE_RADIUS) &&
+                                    game_state.gold[p_id] >= INTERCEPT_COST {
+                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: mouse_position }));
+                                rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
+                                MouseState::WaitReleaseLButton
+                            } else {
+                                intercept_err = true;
+                                MouseState::Intercept
+                            }
                         } else {
                             MouseState::Intercept
                         }
@@ -805,6 +811,10 @@ fn main() -> std::io::Result<()> {
             // intercept radius - 10f32 is a hack to make it look like and intercept just clipping a message is successful
             // actually the interception circle needs to contain the center of the message to succeed
             d.draw_circle_v(a.pos, INTERCEPT_RADIUS - 10f32, intercept_colors[a.player_id]);
+        }
+
+        if intercept_err {
+            d.draw_circle_v(mouse_position, INTERCEPT_RADIUS - 10f32, rcolor(255, 0, 0, 100));
         }
 
         for b in &game_state.bounties {
