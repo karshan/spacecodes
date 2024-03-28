@@ -1,4 +1,5 @@
 #Features
+ * server sets constants (GAME_MAP, INTERCEPT_COST, PASSIVE_GOLD_GAIN etc.)
  * bounty runes 100/200g
  * Visual feedback on spell icons when pressing hotkey
  * Allow clicking spell icons
@@ -14,6 +15,7 @@
  * can only intercept after unit turns
 
 #Bugs
+ * serialize_state() mismatch after ingame restart
  * message and blinking message should be the same shape
  * Recover when packets from both clients are dropped on the same frame
  * [P4] move_unit() moves slower around turns
