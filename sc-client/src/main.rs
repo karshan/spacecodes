@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::cmp::{min, max};
+use std::f32::EPSILON;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
 use pathfinding::path_collides;
@@ -113,8 +114,7 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
         for unit in other_units.iter_mut() {
             // Have to check unit.dead to avoid double counting interception kills (If 2 interceptions kill the same unit on the same frame)
             if !unit.dead {
-                let unit_cen = unit.pos + unit.size().scale_by(0.5f32);
-                if (unit_cen.x - intercept.pos.x).powf(2f32) + (unit_cen.y - intercept.pos.y).powf(2f32) <= INTERCEPT_RADIUS.powf(2f32) {
+                if collision_circle_rect(&intercept.pos, INTERCEPT_RADIUS, &unit.rect()) {
                     unit.dead = true;
                     game_state.intercepted[intercept.player_id] += 1;
                 }
@@ -292,6 +292,42 @@ fn collide_bounties(game_state: &mut GameState, p_id: usize) {
         !game_state.other_units.iter().any(|u| u.rect().collide(&bounty_rect(b))))
 }
 
+fn bubble_rect(u: &Unit) -> Rect<i32> {
+    let cen = u.pos + u.size().scale_by(0.5f32);
+    let dir = (u.path[0] - u.pos).normalized();
+    let bubble_pos: Vector2;
+    let bubble_size: Vector2;
+    if dir.x < -EPSILON { // left
+        bubble_pos = cen + dir.scale_by(MSG_BUBBLE_LEN) + Vector2::new(0f32, -MSG_BUBBLE_WIDTH/2f32);
+        bubble_size = Vector2::new(MSG_BUBBLE_LEN, MSG_BUBBLE_WIDTH);
+    } else if dir.x > EPSILON { // right
+        bubble_pos = cen + Vector2::new(0f32, -MSG_BUBBLE_WIDTH/2f32);
+        bubble_size = Vector2::new(MSG_BUBBLE_LEN, MSG_BUBBLE_WIDTH);
+    } else if dir.y < -EPSILON { // top
+        bubble_pos = cen + dir.scale_by(MSG_BUBBLE_LEN) + Vector2::new(-MSG_BUBBLE_WIDTH/2f32, 0f32);
+        bubble_size = Vector2::new(MSG_BUBBLE_WIDTH, MSG_BUBBLE_LEN);
+    } else { // down
+        bubble_pos = cen + Vector2::new(-MSG_BUBBLE_WIDTH/2f32, 0f32);
+        bubble_size = Vector2::new(MSG_BUBBLE_WIDTH, MSG_BUBBLE_LEN);
+    }
+    Rect {
+        x: bubble_pos.x.round() as i32,
+        y: bubble_pos.y.round() as i32,
+        w: bubble_size.x.round() as i32,
+        h: bubble_size.y.round() as i32
+    }
+}
+
+fn intercept_inside_bubble(u: &Unit, p: &Vector2) -> bool {
+    collision_circle_rect(p, INTERCEPT_RADIUS, &bubble_rect(u)) ||
+        collision_circle_rect(p, INTERCEPT_RADIUS, &u.rect())
+}
+
+fn draw_bubble(d: &mut RaylibDrawHandle, u: &Unit, c: &Color) {
+    let b = bubble_rect(u);
+    d.draw_rectangle_lines(b.x, b.y, b.w, b.h, c)
+}
+
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let max_input_queue = 10;
@@ -426,7 +462,7 @@ fn main() -> std::io::Result<()> {
                             sub_selection: Some(SubSelection::Ship),
                             fuel: [START_FUEL; 2],
                             intercepted: [0; 2],
-                            gold: [0f32; 2],
+                            gold: [STARTING_GOLD; 2],
                             upgrades: [HashSet::new(), HashSet::new()],
                             items: [HashMap::new(), HashMap::new()],
                             bounties: vec![],
@@ -631,7 +667,7 @@ fn main() -> std::io::Result<()> {
                             MouseState::None
                         } else if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
                             if contains_point(&PLAY_AREA, &mouse_position) &&
-                                    !game_state.other_units.iter().any(|other_u| ((other_u.pos + other_u.size().scale_by(0.5f32)) - mouse_position).length() < MSG_PROTECTION_BUBBLE_RADIUS) &&
+                                    !game_state.other_units.iter().any(|other_u| intercept_inside_bubble(other_u, &mouse_position)) &&
                                     game_state.gold[p_id] >= INTERCEPT_COST {
                                 unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: mouse_position }));
                                 rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
@@ -762,8 +798,7 @@ fn main() -> std::io::Result<()> {
             } else {
                 d.draw_rectangle_v(u.pos, u.size(), c);
             }
-            let cen = u.pos + u.size().scale_by(0.5f32);
-            d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, MSG_PROTECTION_BUBBLE_RADIUS, c);
+            draw_bubble(&mut d, u, &c);
         }
 
         for s in &game_state.selection {
@@ -814,13 +849,11 @@ fn main() -> std::io::Result<()> {
         }
 
         for a in &interceptions {
-            // intercept radius - 10f32 is a hack to make it look like and intercept just clipping a message is successful
-            // actually the interception circle needs to contain the center of the message to succeed
-            d.draw_circle_v(a.pos, INTERCEPT_RADIUS - 10f32, intercept_colors[a.player_id]);
+            d.draw_circle_v(a.pos, INTERCEPT_RADIUS, intercept_colors[a.player_id]);
         }
 
         if intercept_err {
-            d.draw_circle_v(mouse_position, INTERCEPT_RADIUS - 10f32, rcolor(255, 0, 0, 100));
+            d.draw_circle_v(mouse_position, INTERCEPT_RADIUS, rcolor(255, 0, 0, 100));
         }
 
         for b in &game_state.bounties {

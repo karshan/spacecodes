@@ -9,6 +9,38 @@ pub struct Rect<T: Num> {
     pub h: T,
 }
 
+// TODO use From/Into traits for this
+pub fn rect_into_f32(r: &Rect<i32>) -> Rect<f32> {
+    Rect {
+        x: r.x as f32,
+        y: r.y as f32,
+        w: r.w as f32,
+        h: r.h as f32,
+    }
+}
+
+// from raylib, copied because of potential MacOS issue
+pub fn collision_circle_rect(center: &Vector2, radius: f32, in_rect: &Rect<i32>) -> bool
+{
+    let rect: Rect<f32> = rect_into_f32(in_rect);
+    let rect_cen_x: f32 = rect.x + rect.w/2.0f32;
+    let rect_cen_y: f32 = rect.y + rect.h/2.0f32;
+
+    let dx: f32 = (center.x - rect_cen_x).abs();
+    let dy: f32 = (center.y - rect_cen_y).abs();
+
+    if dx > (rect.w/2.0f32 + radius) { return false; }
+    if dy > (rect.h/2.0f32 + radius) { return false; }
+
+    if dx <= (rect.w/2.0f32) { return true; }
+    if dy <= (rect.h/2.0f32) { return true; }
+
+    let corner_sq_dist: f32 = (dx - rect.w/2.0f32) * (dx - rect.w/2.0f32) +
+                                (dy - rect.h/2.0f32) * (dy - rect.h/2.0f32);
+
+    corner_sq_dist <= (radius * radius)
+}
+
 pub fn contains_point(r: &Rect<i32>, p: &Vector2) -> bool {
     let px = p.x.round() as i32;
     let py = p.y.round() as i32;

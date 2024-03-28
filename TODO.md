@@ -12,6 +12,13 @@
  * Reduce passive gold income
 
 #Ideas
+ * you only get gold bounties if the message successfully delivers
+ * blink bounties
+ * crossing rivers increases fuel gain for message
+ * protection bubble is bigger but only in direction unit is moving
+ * can intercept while drawing path
+ * can stash incomplete/complete paths for later
+ * turn based path drawing. 30 second path draw phase followed by interception phase ?
  * intercept circle grows with time
  * bubble radius increase upgrade
  * can only intercept after unit turns
