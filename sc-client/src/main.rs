@@ -303,7 +303,7 @@ fn main() -> std::io::Result<()> {
         (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
     ]);
     let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 100), rcolor(0x74, 0xC6, 0x9D, 100)];
-    let msg_spawn_pos = [Vector2 { x: 502f32, y: 179f32 }, Vector2 { x: 697f32, y: 374f32 }];
+    let msg_spawn_pos = [Vector2 { x: 502f32, y: 90f32 }, Vector2 { x: 786f32, y: 374f32 }];
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -512,7 +512,7 @@ fn main() -> std::io::Result<()> {
                                 },
                                 KeyboardKey::KEY_I => { start_intercept = game_state.sub_selection == Some(SubSelection::Ship) },
                                 KeyboardKey::KEY_S => { shop_open = !shop_open }
-                                KeyboardKey::KEY_Q => {
+                                KeyboardKey::KEY_ESCAPE => {
                                     match mouse_state {
                                         MouseState::Path(_, _) => { cancel = true }
                                         MouseState::Intercept => { cancel = true }

@@ -12,6 +12,8 @@
  * Reduce passive gold income
 
 #Ideas
+ * intercept circle grows with time
+ * bubble radius increase upgrade
  * can only intercept after unit turns
 
 #Bugs

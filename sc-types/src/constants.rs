@@ -12,7 +12,7 @@ pub enum AreaEnum {
 
 pub static START_FUEL: i32 = 3600;
 pub static FUEL_LOSS: i32 = 1; // per frame
-pub static PASSIVE_GOLD_GAIN: f32 = 10f32/60f32;
+pub static PASSIVE_GOLD_GAIN: f32 = 5f32/60f32;
 pub static STARTING_GOLD: f32 = 100f32;
 pub static MSG_FUEL: i32 = 600;
 pub static MSG_PROTECTION_BUBBLE_RADIUS: f32 = 100f32;
@@ -25,7 +25,7 @@ pub static BOUNTY_TIME_MIN: u32 = 300;
 pub static BOUNTY_TIME_RANGE: u32 = 600;
 pub static MAX_BOUNTIES: usize = 4;
 pub static BLINK_COOLDOWN: i32 = 900;
-pub static INTERCEPT_RADIUS: f32 = 40f32;
+pub static INTERCEPT_RADIUS: f32 = 30f32;
 pub static INTERCEPT_COST: f32 = 40f32;
 pub static INTERCEPT_EXPIRY: f32 = 3f32 * 60f32;
 pub static BLINK_RANGE: f32 = 120f32;
@@ -35,39 +35,51 @@ pub static PLAY_AREA: Rect<i32> = Rect {
     x: 0, y: 0,
     w: 1024, h: 768,
 };
-pub static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
+pub static GAME_MAP: [(AreaEnum, Rect<i32>); 7] = [
     (AreaEnum::Blocked, Rect {
         x: 328, y: 200,
         w: 368, h: 368
     }),
     (AreaEnum::P0Spawn, Rect {
-        x: 477, y: 130,
+        x: 477, y: 65,
         w: 70, h: 70
     }),
     (AreaEnum::P0Station, Rect {
-        x: 477, y: 568,
+        x: 477, y: 633,
         w: 70, h: 70
     }),
     (AreaEnum::P1Spawn, Rect {
-        x: 696, y: 349,
+        x: 761, y: 349,
         w: 70, h: 70
     }),
     (AreaEnum::P1Station, Rect {
-        x: 258, y: 349,
+        x: 193, y: 349,
         w: 70, h: 70
     }),
+    (AreaEnum::Blocked, Rect {
+        x: 0, y: 0,
+        w: 128, h: 768
+    }),
+    (AreaEnum::Blocked, Rect {
+        x: 896, y: 0,
+        w: 128, h: 768
+    })
 ];
 
-pub static P0_BLOCKED: [Rect<i32>; 3] = [
+pub static P0_BLOCKED: [Rect<i32>; 5] = [
     GAME_MAP[0].1,
     GAME_MAP[3].1,
     GAME_MAP[4].1,
+    GAME_MAP[5].1,
+    GAME_MAP[6].1,
 ];
 
-pub static P1_BLOCKED: [Rect<i32>; 3] = [
+pub static P1_BLOCKED: [Rect<i32>; 5] = [
     GAME_MAP[0].1,
     GAME_MAP[1].1,
     GAME_MAP[2].1,
+    GAME_MAP[5].1,
+    GAME_MAP[6].1,
 ];
 
 pub fn station(p_id: usize) -> &'static Rect<i32> {
