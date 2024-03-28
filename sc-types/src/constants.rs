@@ -41,33 +41,33 @@ pub static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
         w: 368, h: 368
     }),
     (AreaEnum::P0Spawn, Rect {
-        x: 477, y: 200,
+        x: 477, y: 130,
         w: 70, h: 70
     }),
     (AreaEnum::P0Station, Rect {
-        x: 477, y: 498,
+        x: 477, y: 568,
         w: 70, h: 70
     }),
     (AreaEnum::P1Spawn, Rect {
-        x: 626, y: 349,
+        x: 696, y: 349,
         w: 70, h: 70
     }),
     (AreaEnum::P1Station, Rect {
-        x: 328, y: 349,
+        x: 258, y: 349,
         w: 70, h: 70
     }),
 ];
 
 pub static P0_BLOCKED: [Rect<i32>; 3] = [
-    Rect { x: 328, y: 200, w: 149, h: 368 },
-    Rect { x: 477, y: 270, w: 70, h: 228 },
-    Rect { x: 547, y: 200, w: 149, h: 368 }
+    GAME_MAP[0].1,
+    GAME_MAP[3].1,
+    GAME_MAP[4].1,
 ];
 
 pub static P1_BLOCKED: [Rect<i32>; 3] = [
-    Rect { x: 328, y: 200, w: 368, h: 149 },
-    Rect { x: 398, y: 349, w: 228, h: 70 },
-    Rect { x: 328, y: 419, w: 368, h: 149 }
+    GAME_MAP[0].1,
+    GAME_MAP[1].1,
+    GAME_MAP[2].1,
 ];
 
 pub fn station(p_id: usize) -> &'static Rect<i32> {

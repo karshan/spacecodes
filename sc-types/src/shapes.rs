@@ -1,6 +1,7 @@
 use num_traits::{AsPrimitive, Num};
 use raylib::prelude::Vector2;
 
+#[derive(Copy, Clone)]
 pub struct Rect<T: Num> {
     pub x: T,
     pub y: T,

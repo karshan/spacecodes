@@ -267,7 +267,7 @@ fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
         let mut b = Vector2::new(rng.gen_range(0..1024) as f32, rng.gen_range(0..768) as f32);
         // Check against play area so the entire bounty rect is inside
         while !PLAY_AREA.contains(&bounty_rect(&b)) ||
-                GAME_MAP[0].1.collide(&bounty_rect(&b)) {
+                GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b))) {
             b = Vector2::new(rng.gen_range(0..1024) as f32, rng.gen_range(0..768) as f32);
         }
         game_state.bounties.push(b);
@@ -303,7 +303,7 @@ fn main() -> std::io::Result<()> {
         (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
     ]);
     let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 100), rcolor(0x74, 0xC6, 0x9D, 100)];
-    let msg_spawn_pos = [Vector2 { x: 502f32, y: 249f32 }, Vector2 { x: 627f32, y: 374f32 }];
+    let msg_spawn_pos = [Vector2 { x: 502f32, y: 179f32 }, Vector2 { x: 697f32, y: 374f32 }];
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -742,8 +742,14 @@ fn main() -> std::io::Result<()> {
 
         for (t, r) in &GAME_MAP {
             match t {
-                AreaEnum::P0Station => d.draw_rectangle(r.x, r.y, r.w, (r.h * game_state.fuel[0])/START_FUEL, area_colors[&t]),
-                AreaEnum::P1Station => d.draw_rectangle(r.x + (r.w * (START_FUEL - game_state.fuel[1]))/START_FUEL, r.y, (r.w * game_state.fuel[1])/START_FUEL, r.h, area_colors[&t]),
+                AreaEnum::P0Station => {
+                    d.draw_rectangle(r.x, r.y, r.w, (r.h * game_state.fuel[0])/START_FUEL, area_colors[&t]);
+                    d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
+                }
+                AreaEnum::P1Station => {
+                    d.draw_rectangle(r.x + (r.w * (START_FUEL - game_state.fuel[1]))/START_FUEL, r.y, (r.w * game_state.fuel[1])/START_FUEL, r.h, area_colors[&t]);
+                    d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
+                }
                 AreaEnum::Blocked => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),
                 _ => d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]),
             }
