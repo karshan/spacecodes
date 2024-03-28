@@ -421,8 +421,8 @@ fn main() -> std::io::Result<()> {
                         game_state = GameState {
                             my_units: vec![],
                             other_units: vec![],
-                            selection: HashSet::new(),
-                            sub_selection: None,
+                            selection: HashSet::from([Selection::Ship]),
+                            sub_selection: Some(SubSelection::Ship),
                             fuel: [START_FUEL; 2],
                             intercepted: [0; 2],
                             gold: [0f32; 2],
@@ -575,10 +575,12 @@ fn main() -> std::io::Result<()> {
                             if ship(p_id).collide(&selection_rect) {
                                 in_box.push(Selection::Ship);
                             }
-                            if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
-                                game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
-                            } else {
-                                game_state.selection = HashSet::from_iter(in_box);
+                            if !in_box.is_empty() {
+                                if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
+                                    game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
+                                } else {
+                                    game_state.selection = HashSet::from_iter(in_box);
+                                }
                             }
                             let mut choices = vec![];
                             if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {

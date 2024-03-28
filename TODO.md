@@ -1,4 +1,4 @@
-#Features 
+#Features
  * bounty runes 100/200g
  * Show error message if trying to intercept without enough gold/too close to enemy unit
  * Only show blink message icon if enough >0 Item::Blink's
@@ -7,6 +7,9 @@
  * draw intercept circle when targeting
  * Make intercept upgrades actually do something
  * Message death animation
+
+#Balance
+ * Reduce passive gold income
 
 #Ideas
  * can only intercept after unit turns
