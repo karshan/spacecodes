@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use raylib::prelude::*;
+use sc_types::constants::PLAY_AREA;
 use sc_types::*;
 use sc_types::shapes::*;
 
@@ -32,7 +33,7 @@ pub struct MessageSpellIcons {
 
 impl MessageSpellIcons {
     pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> MessageSpellIcons {
-        let start_pos = Vector2::new(394f32, 843f32);
+        let start_pos = Vector2::new(PLAY_AREA.w as f32/2f32 - 25f32, PLAY_AREA.h as f32 + 75f32);
         MessageSpellIcons {
             blink: Icon {
                 tex: rl.load_texture(&thread, "sc-client/assets/blink.png").unwrap(),
@@ -51,9 +52,9 @@ pub struct ShipSpellIcons([(Icon, char); 3]);
 
 impl ShipSpellIcons {
     pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> ShipSpellIcons {
-        let start_pos = Vector2::new(394f32, 843f32);
         let intercept_tex = rl.load_texture(&thread, "sc-client/assets/intercept.png").unwrap();
         let gap = Vector2::new(12f32, 0f32) + Vector2::new(intercept_tex.width as f32, 0f32);
+        let start_pos = Vector2::new(PLAY_AREA.w as f32/2f32 - 25f32, PLAY_AREA.h as f32 + 75f32) - gap;
         ShipSpellIcons([
             (Icon {
                 tex: intercept_tex,
@@ -95,7 +96,7 @@ pub struct Shop {
 
 impl Shop {
     pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> Result<Shop, String> {
-        let first_pos = Vector2::new(863f32, 768f32);
+        let first_pos = Vector2::new(PLAY_AREA.w as f32 - 200f32, PLAY_AREA.h as f32);
         let gap = Vector2::new(0f32, 20f32);
         Ok(Shop {
             blink: text_icon(rl, thread, "Blink", first_pos)?,
@@ -117,7 +118,7 @@ impl Shop {
     }
 
     pub fn render(self: &Self, d: &mut RaylibDrawHandle, upgrades: &HashSet<Upgrade>, gold: f32) {
-        d.draw_line(863, 768, 863, 967, Color::BLACK);
+        d.draw_line(800, PLAY_AREA.h, 800, PLAY_AREA.h + 200, Color::BLACK);
         let col = Color::WHITE;
         let nogold = rcolor(255, 255, 255, 100);
         self.blink.render(d, if gold >= Item::Blink.cost() { col } else { nogold });

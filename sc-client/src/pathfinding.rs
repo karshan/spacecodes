@@ -25,7 +25,7 @@ fn check_collision_lines(a0: Vector2, a1: Vector2, b0: Vector2, b1: Vector2) -> 
     return collision;
 }
 
-pub fn path_collides(rects: &[Rect<i32>], offsets: [Vector2; 4], pos: Vector2, target: Vector2) -> bool {
+pub fn path_collides(rects: &Vec<Rect<i32>>, offsets: [Vector2; 4], pos: Vector2, target: Vector2) -> bool {
     let mut collided = false;
     for r in rects {
         for l in r.lines() {

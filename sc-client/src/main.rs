@@ -238,9 +238,10 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vec
     let sx = Vector2 { x: MESSAGE_SIZE.x, y: 0f32 };
     let sy = Vector2 { x: 0f32, y: MESSAGE_SIZE.y };
     let offsets = [ Vector2::zero(), sx, sy, *MESSAGE_SIZE ];
-    let blocked = if p_id == 0 { &P0_BLOCKED } else { &P1_BLOCKED };
-    let m1_ok = !path_collides(blocked, offsets, p1, m1) && !path_collides(blocked, offsets, m1, p2);
-    let m2_ok = !path_collides(blocked, offsets, p1, m2) && !path_collides(blocked, offsets, m2, p2);
+    let mut blocked: Vec<Rect<i32>> = (if p_id == 0 { P0_BLOCKED } else { P1_BLOCKED }).to_vec();
+    blocked.extend(BLOCKED.to_vec());
+    let m1_ok = !path_collides(&blocked, offsets, p1, m1) && !path_collides(&blocked, offsets, m1, p2);
+    let m2_ok = !path_collides(&blocked, offsets, p1, m2) && !path_collides(&blocked, offsets, m2, p2);
     let p1_ok = PLAY_AREA.contains(&unit_rect(&p1, MESSAGE_SIZE));
     let p2_ok = PLAY_AREA.contains(&unit_rect(&p2, MESSAGE_SIZE));
     if !p1_ok || !p2_ok {
@@ -264,11 +265,12 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vec
 
 fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
     if game_state.bounties.len() < MAX_BOUNTIES {
-        let mut b = Vector2::new(rng.gen_range(0..1024) as f32, rng.gen_range(0..768) as f32);
+        let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
         // Check against play area so the entire bounty rect is inside
         while !PLAY_AREA.contains(&bounty_rect(&b)) ||
-                GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b))) {
-            b = Vector2::new(rng.gen_range(0..1024) as f32, rng.gen_range(0..768) as f32);
+                GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b)) ||
+                BLOCKED.iter().any(|r| r.collide(&bounty_rect(&b)))) {
+            b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
         }
         game_state.bounties.push(b);
     }
@@ -339,7 +341,7 @@ fn main() -> std::io::Result<()> {
         (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
     ]);
     let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 100), rcolor(0x74, 0xC6, 0x9D, 100)];
-    let msg_spawn_pos = [Vector2 { x: 502f32, y: 90f32 }, Vector2 { x: 786f32, y: 374f32 }];
+    let msg_spawn_pos = [Vector2 { x: 490f32, y: 340f32 }, Vector2 { x: 640f32, y: 490f32 }];
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -359,7 +361,7 @@ fn main() -> std::io::Result<()> {
 
     set_trace_log(TraceLogLevel::LOG_ERROR);
     let (mut rl, thread) = raylib::init()
-        .size(1024, 968)
+        .size(PLAY_AREA.w, PLAY_AREA.h + 200)
         .title("Space Codes")
         .build();
     rl.set_target_fps(frame_rate);
@@ -791,6 +793,12 @@ fn main() -> std::io::Result<()> {
             }
         }
 
+        for r in &BLOCKED {
+            d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&AreaEnum::Blocked])
+        }
+
+        d.draw_rectangle_lines(RIVER.x, RIVER.y, RIVER.w, RIVER.h, Color::BLUE);
+
         for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
             let c = if u.player_id == 0 { u.p0_colors() } else { u.p1_colors() };
             if u.blinking.is_some() {
@@ -902,14 +910,14 @@ fn main() -> std::io::Result<()> {
             d.draw_text(&end_str, 470, 370, 20, Color::BLACK);
         }
 
-        d.draw_line(0, 768, 1023, 768, Color::BLACK);
-        d.draw_text(&format!("{:?}", game_state.sub_selection), 20, 768, 20, Color::BLACK);
-        d.draw_text(&format!("{}", game_state.gold[p_id].round()), 20, 788, 20, Color::BLACK);
+        d.draw_line(0, PLAY_AREA.h, PLAY_AREA.w, PLAY_AREA.h, Color::BLACK);
+        d.draw_text(&format!("{:?}", game_state.sub_selection), 20, PLAY_AREA.h, 20, Color::BLACK);
+        d.draw_text(&format!("{}", game_state.gold[p_id].round()), 20, PLAY_AREA.h + 20, 20, Color::BLACK);
         if shop_open {
             shop.render(&mut d, &game_state.upgrades[p_id], game_state.gold[p_id]);
         }
-        d.draw_text(&format!("{:?}", game_state.upgrades[p_id]), 20, 808, 20, Color::BLACK);
-        d.draw_text(&format!("{:?}", game_state.items[p_id]), 20, 828, 20, Color::BLACK);
+        d.draw_text(&format!("{:?}", game_state.upgrades[p_id]), 20, PLAY_AREA.h + 40, 20, Color::BLACK);
+        d.draw_text(&format!("{:?}", game_state.items[p_id]), 20, PLAY_AREA.h + 60, 20, Color::BLACK);
     }
     Ok(())
 }

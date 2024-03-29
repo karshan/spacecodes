@@ -34,53 +34,72 @@ pub static BLINK_ITEM_COST: f32 = 100f32;
 pub static KILLS_TO_WIN: u8 = 10;
 pub static PLAY_AREA: Rect<i32> = Rect {
     x: 0, y: 0,
-    w: 1024, h: 768,
+    w: 1000, h: 1000,
 };
-pub static GAME_MAP: [(AreaEnum, Rect<i32>); 7] = [
+pub static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
     (AreaEnum::Blocked, Rect {
-        x: 328, y: 200,
-        w: 368, h: 368
+        x: 375, y: 375,
+        w: 250, h: 250
     }),
     (AreaEnum::P0Spawn, Rect {
-        x: 477, y: 65,
-        w: 70, h: 70
+        x: 475, y: 325,
+        w: 50, h: 50
     }),
     (AreaEnum::P0Station, Rect {
-        x: 477, y: 633,
-        w: 70, h: 70
+        x: 475, y: 625,
+        w: 50, h: 50
     }),
     (AreaEnum::P1Spawn, Rect {
-        x: 761, y: 349,
-        w: 70, h: 70
+        x: 625, y: 475,
+        w: 50, h: 50
     }),
     (AreaEnum::P1Station, Rect {
-        x: 193, y: 349,
-        w: 70, h: 70
+        x: 325, y: 475,
+        w: 50, h: 50
     }),
-    (AreaEnum::Blocked, Rect {
-        x: 0, y: 0,
-        w: 128, h: 768
-    }),
-    (AreaEnum::Blocked, Rect {
-        x: 896, y: 0,
-        w: 128, h: 768
-    })
 ];
 
-pub static P0_BLOCKED: [Rect<i32>; 5] = [
+pub static BLOCKED: [Rect<i32>; 16] = [
+    // Brackets
+    // BottomLeft
+    Rect { x: 275, y: 625, w: 10, h: 100 },
+    Rect { x: 275, y: 715, w: 100, h: 10 },
+    // TopRight
+    Rect { x: 625, y: 275, w: 100, h: 10 },
+    Rect { x: 715, y: 275, w: 10, h: 100 },
+    // BottomRight
+    Rect { x: 625, y: 715, w: 100, h: 10 },
+    Rect { x: 715, y: 625, w: 10, h: 100 },
+    // TopLeft
+    Rect { x: 275, y: 275, w: 10, h: 100 },
+    Rect { x: 275, y: 275, w: 100, h: 10 },
+
+    //Outer
+    Rect { x: 75, y: 625, w: 100, h: 100 },
+    Rect { x: 75, y: 275, w: 100, h: 100 },
+
+    Rect { x: 275, y: 75, w: 100, h: 100 },
+    Rect { x: 625, y: 75, w: 100, h: 100 },
+
+    Rect { x: 825, y: 625, w: 100, h: 100 },
+    Rect { x: 825, y: 275, w: 100, h: 100 },
+
+    Rect { x: 275, y: 825, w: 100, h: 100 },
+    Rect { x: 625, y: 825, w: 100, h: 100 },
+];
+
+pub static RIVER: Rect<i32> = Rect { x: 125, y: 125, w: 750, h: 750 };
+
+pub static P0_BLOCKED: [Rect<i32>; 3] = [
     GAME_MAP[0].1,
     GAME_MAP[3].1,
     GAME_MAP[4].1,
-    GAME_MAP[5].1,
-    GAME_MAP[6].1,
 ];
 
-pub static P1_BLOCKED: [Rect<i32>; 5] = [
+pub static P1_BLOCKED: [Rect<i32>; 3] = [
     GAME_MAP[0].1,
     GAME_MAP[1].1,
     GAME_MAP[2].1,
-    GAME_MAP[5].1,
-    GAME_MAP[6].1,
 ];
 
 pub fn station(p_id: usize) -> &'static Rect<i32> {
