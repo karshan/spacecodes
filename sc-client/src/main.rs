@@ -365,6 +365,9 @@ fn main() -> std::io::Result<()> {
         .title("Space Codes")
         .build();
     rl.set_target_fps(frame_rate);
+    let mut shader = rl.load_shader(&thread, Some("sc-client/src/vertex.vs"), Some("sc-client/src/frag.fs")).unwrap();
+    let u_mouse = shader.get_shader_location("u_mouse");
+
     let message_spell_icons = MessageSpellIcons::new(&mut rl, &thread);
     let ship_spell_icons = ShipSpellIcons::new(&mut rl, &thread);
 
@@ -793,9 +796,12 @@ fn main() -> std::io::Result<()> {
             }
         }
 
+        shader.set_shader_value(u_mouse, mouse_position);
+        let mut shd = d.begin_shader_mode(&shader);
         for r in &BLOCKED {
-            d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&AreaEnum::Blocked])
+            shd.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&AreaEnum::Blocked])
         }
+        drop(shd);
 
         d.draw_rectangle_lines(RIVER.x, RIVER.y, RIVER.w, RIVER.h, Color::BLUE);
 
