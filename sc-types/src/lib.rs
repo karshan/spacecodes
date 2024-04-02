@@ -136,6 +136,7 @@ pub struct Unit {
     pub path: VecDeque<Vector2>,
     pub blinking: Option<bool>,
     pub cooldown: i32,
+    pub carrying_bounty: f32,
 }
 
 pub fn unit_rect(pos: &Vector2, size: &Vector2) -> Rect<i32> {

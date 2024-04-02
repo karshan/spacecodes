@@ -91,7 +91,15 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
                     if *blink_imbued {
                         game_state.items[i].entry(Item::Blink).and_modify(|e| *e -= 1).or_insert(-1);
                     }
-                    units.push(Unit { dead: false, player_id: *player_id, pos: path[0], path: path.clone(), blinking: if *blink_imbued { Some(false) } else { None }, cooldown: 0 });
+                    units.push(Unit {
+                        dead: false,
+                        player_id: *player_id,
+                        pos: path[0],
+                        path: path.clone(),
+                        blinking: if *blink_imbued { Some(false) } else { None },
+                        cooldown: 0,
+                        carrying_bounty: 0f32,
+                    });
                 },
                 GameCommand::Intercept(InterceptCommand { pos }) => {
                     interceptions.push(Interception { pos: pos.clone(), start_frame: frame, player_id: i });
@@ -132,10 +140,12 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
 
-    game_state.my_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
-        .for_each(|u| u.dead = true);
+    game_state.gold[p_id] += game_state.my_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
+        .map(|u| { u.dead = true; u }).fold(0f32, |acc, e| acc + e.carrying_bounty);
     reap(game_state);
-    game_state.other_units.retain(|u| !u.rect().collide(station(u.player_id)));
+    game_state.gold[other_id] += game_state.other_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
+        .map(|u| { u.dead = true; u }).fold(0f32, |acc, e| acc + e.carrying_bounty);
+    game_state.other_units.retain(|u| !u.dead);
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
     game_state.fuel[other_id] = min(START_FUEL, game_state.fuel[other_id] + (num_other_units - game_state.other_units.len() as i32) * MSG_FUEL);
@@ -280,16 +290,19 @@ fn bounty_rect(b: &Vector2) -> Rect<i32> {
     Rect { x: b.x.round() as i32, y: b.y.round() as i32, w: BOUNTY_SIZE.x.round() as i32, h: BOUNTY_SIZE.y.round() as i32 }
 }
 
-fn collide_bounties(game_state: &mut GameState, p_id: usize) {
-    let other_id = (p_id + 1) % 2;
+fn collide_bounties(game_state: &mut GameState) {
     for b in &game_state.bounties {
-        if game_state.my_units.iter().any(|u| u.rect().collide(&bounty_rect(b))) {
-            game_state.gold[p_id] += BOUNTY_GOLD;
+        let m_mine = game_state.my_units.iter_mut().find(|u| u.rect().collide(&bounty_rect(b)));
+        let m_other = game_state.other_units.iter_mut().find(|u| u.rect().collide(&bounty_rect(b)));
+        if let Some(mine) = m_mine {
+            mine.carrying_bounty += BOUNTY_GOLD;
         }
-        if game_state.other_units.iter().any(|u| u.rect().collide(&bounty_rect(b))) {
-            game_state.gold[other_id] += BOUNTY_GOLD;
+        if let Some(other) = m_other {
+            other.carrying_bounty += BOUNTY_GOLD;
         }
     }
+
+    // PERF loop only once
     game_state.bounties.retain(|b| !game_state.my_units.iter().any(|u| u.rect().collide(&bounty_rect(b))) &&
         !game_state.other_units.iter().any(|u| u.rect().collide(&bounty_rect(b))))
 }
@@ -721,7 +734,7 @@ fn main() -> std::io::Result<()> {
                     move_units(&mut game_state.my_units);
                     move_units(&mut game_state.other_units);
                     add_fuel(&mut game_state, p_id);
-                    collide_bounties(&mut game_state, p_id);
+                    collide_bounties(&mut game_state);
                     tick(&mut game_state);
                     frame_counter += 1;
                     if frame_counter % 60 == 0 {
