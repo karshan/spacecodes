@@ -6,7 +6,7 @@ use sc_types::{ClientPkt, SeqState, ServerEnum, ServerPkt};
 use std::io;
 
 pub fn socket_recv(socket: &UdpSocket, expected_addr: &SocketAddr, seq_state: &mut SeqState) -> Option<ServerEnum> {
-    let mut buf = [0u8; 1024];
+    let mut buf = [0u8; 16000];
     match socket.recv_from(&mut buf) {
         Ok((n, addr)) => {
             if addr != *expected_addr {

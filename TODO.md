@@ -24,6 +24,7 @@
  * can only intercept after unit turns
 
 #Bugs
+ * Error: Os { code: 10040, kind: Uncategorized, message: "A message sent on a datagram socket was larger than the internal message buffer or some other network limit, or the buffer used to receive a datagram into was smaller than the datagram itself." } 
  * serialize_state() mismatch after ingame restart
  * message and blinking message should be the same shape
  * Recover when packets from both clients are dropped on the same frame

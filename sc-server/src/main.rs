@@ -17,7 +17,7 @@ enum ServerState {
 fn main() -> io::Result<()> {
     task::block_on(async {
         let socket = UdpSocket::bind("0.0.0.0:8080").await?;
-        let mut buf = [0u8; 1024];
+        let mut buf = [0u8; 16000];
         let mut conn_states = HashMap::new();
         let mut state_hashes = HashMap::new();
         let mut state = ServerState::Waiting;
