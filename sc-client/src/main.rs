@@ -834,9 +834,20 @@ fn main() -> std::io::Result<()> {
                     let u = &game_state.my_units[*u_id];
                     if u.blinking.is_some() {
                         let cen = u.pos + u.size().scale_by(0.5f32);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 1f32, Color::BLACK);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 2f32, Color::BLACK);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 3f32, Color::BLACK);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 4f32, Color::BLACK);
                         d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32, Color::BLACK);
                     } else {
-                        d.draw_rectangle_lines(u.pos.x.round() as i32, u.pos.y.round() as i32, u.size().x.round() as i32, u.size().y.round() as i32, Color::BLACK);
+                        let u_r = u.rect();
+                        let r = Rectangle {
+                            x: u_r.x as f32,
+                            y: u_r.y as f32,
+                            width: u_r.w as f32,
+                            height: u_r.h as f32,
+                        };
+                        d.draw_rectangle_lines_ex(r, 5, Color::BLACK);
                     }
                     if !u.path.is_empty() {
                         let mut p = u.pos + u.size().scale_by(0.5f32);
@@ -850,7 +861,13 @@ fn main() -> std::io::Result<()> {
                 },
                 Selection::Ship => {
                     let rect = ship(p_id);
-                    d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, Color::BLACK)
+                    let r = Rectangle {
+                        x: rect.x as f32,
+                        y: rect.y as f32,
+                        width: rect.w as f32,
+                        height: rect.h as f32,
+                    };
+                    d.draw_rectangle_lines_ex(r, 5, Color::BLACK);
                 },
                 Selection::Station => {
                     let rect = station(p_id);
