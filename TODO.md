@@ -1,35 +1,20 @@
 #Features
- * server sets constants (GAME_MAP, INTERCEPT_COST, PASSIVE_GOLD_GAIN etc.)
- * death animation
- * Visual feedback on spell icons when pressing hotkey
- * Allow clicking spell icons
- * draw intercept circle when targeting?
- * Make intercept upgrades actually do something
- * Message death animation
- * Show text error message if trying to intercept without enough gold/too close to enemy unit
-
-#Balance
- * Reduce passive gold income
+ * [P2] server sets constants (GAME_MAP, INTERCEPT_COST, PASSIVE_GOLD_GAIN etc.)
+ * [P3] Show text error message if trying to intercept without enough gold/too close to enemy unit
+ * [P3] draw intercept circle when targeting?
+ * [P3] Message death animation
+ * [P4] Visual feedback on spell icons when pressing hotkey
+ * [P4] Allow clicking spell icons
 
 #Ideas
- * you only get gold bounties if the message successfully delivers
- * blink bounties
- * crossing rivers increases fuel gain for message
- * protection bubble is bigger but only in direction unit is moving
+ * crossing rivers increases fuel gain for message/speed etc.
  * can intercept while drawing path
  * can stash incomplete/complete paths for later
- * turn based path drawing. 30 second path draw phase followed by interception phase ?
- * intercept circle grows with time
- * bubble radius increase upgrade
- * can only intercept after unit turns
 
 #Bugs
- * Error: Os { code: 10040, kind: Uncategorized, message: "A message sent on a datagram socket was larger than the internal message buffer or some other network limit, or the buffer used to receive a datagram into was smaller than the datagram itself." } 
- * serialize_state() mismatch after ingame restart
- * message and blinking message should be the same shape
- * Recover when packets from both clients are dropped on the same frame
+ * [P3] Recover when packets from both clients are dropped on the same frame
+ * [P4] message and blinking message should be the same shape (collision still assumes rectangle)
  * [P4] move_unit() moves slower around turns
- * It is possible to send 2+ blink commands or intercept commands etc. in the same frame because the cooldown/gold doesn't update until apply_updates() is called
 
 #Hygiene
  * game_state.{my_units, other_units} -> game_state.units: [Vec<Unit>; 2]

@@ -1,9 +1,26 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use raylib::prelude::*;
 use sc_types::constants::PLAY_AREA;
 use sc_types::*;
 use sc_types::shapes::*;
+
+pub struct Bounties(HashMap<BountyEnum, Texture2D>);
+
+impl Bounties {
+    pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> Bounties {
+        Bounties(HashMap::from([
+            (BountyEnum::Blink, rl.load_texture(&thread, "sc-client/assets/blink_bounty.png").unwrap()),
+            (BountyEnum::Fuel, rl.load_texture(&thread, "sc-client/assets/fuel_bounty.png").unwrap()),
+            (BountyEnum::Lumber, rl.load_texture(&thread, "sc-client/assets/lumber_bounty.png").unwrap()),
+            (BountyEnum::Gold, rl.load_texture(&thread, "sc-client/assets/gold_bounty.png").unwrap()),
+        ]))
+    }
+
+    pub fn render(self: &Self, d: &mut RaylibDrawHandle, type_: BountyEnum, pos: Vector2) {
+        d.draw_texture_ex(&self.0[&type_], pos, 0f32, 1f32, Color::WHITE);
+    }
+}
 
 pub struct Icon {
     tex: Texture2D,

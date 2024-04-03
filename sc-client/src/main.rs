@@ -432,6 +432,7 @@ fn main() -> std::io::Result<()> {
 
     let message_spell_icons = MessageSpellIcons::new(&mut rl, &thread);
     let ship_spell_icons = ShipSpellIcons::new(&mut rl, &thread);
+    let bounty_icons = Bounties::new(&mut rl, &thread);
 
     let mut state = ClientState::SendHello;
     // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
@@ -993,6 +994,7 @@ fn main() -> std::io::Result<()> {
         }
 
         for b in &game_state.bounties {
+            // bounty_icons.render(&mut d, b.type_, b.pos);
             d.draw_rectangle_v(b.pos, BOUNTY_SIZE, b.type_.color());
         }
 
