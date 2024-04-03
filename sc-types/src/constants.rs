@@ -14,6 +14,7 @@ pub static START_FUEL: i32 = 3600;
 pub static FUEL_LOSS: i32 = 1; // per frame
 pub static PASSIVE_GOLD_GAIN: f32 = 3f32/60f32;
 pub static STARTING_GOLD: f32 = 100f32;
+pub static MINIMUM_PATH_SEGMENT: f32 = 50f32;
 pub static MSG_FUEL: i32 = 600;
 pub static MSG_BUBBLE_LEN: f32 = 200f32;
 pub static MSG_BUBBLE_WIDTH: f32 = MESSAGE_SIZE.x;
