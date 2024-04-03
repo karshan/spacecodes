@@ -84,13 +84,13 @@ impl Upgrade {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Item {
-    Blink
+    None
 }
 
 impl Item {
     pub fn cost(self: &Self) -> f32 {
         match self {
-            Item::Blink => 50f32
+            Item::None => 0f32
         }
     }
 }
@@ -192,7 +192,6 @@ pub struct SpawnMsgCommand {
     pub player_id: usize,
     #[serde_nested(sub = "Vector2", serde(with = "Vector2Def"))]
     pub path: VecDeque<Vector2>,
-    pub blink_imbued: bool
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

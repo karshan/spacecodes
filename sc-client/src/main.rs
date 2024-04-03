@@ -87,16 +87,13 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
                         units[*u_id].blinking = Some(true);
                     }
                 },
-                GameCommand::Spawn(SpawnMsgCommand { path, player_id, blink_imbued }) => {
-                    if *blink_imbued {
-                        game_state.items[i].entry(Item::Blink).and_modify(|e| *e -= 1).or_insert(-1);
-                    }
+                GameCommand::Spawn(SpawnMsgCommand { path, player_id }) => {
                     units.push(Unit {
                         dead: false,
                         player_id: *player_id,
                         pos: path[0],
                         path: path.clone(),
-                        blinking: if *blink_imbued { Some(false) } else { None },
+                        blinking: None,
                         cooldown: 0,
                         carrying_bounty: 0f32,
                     });
@@ -236,8 +233,6 @@ fn serialize_state(game_state: &GameState, p_id: usize) -> Result<Vec<u8>, rmps:
     // FIXME serialize upgrades and items correctly (easiest might be to convert to sorted vec and serialize)
     let upg: Vec<usize> = game_state.upgrades.iter().map(|hs| hs.len()).collect();
     v.append(&mut rmp_serde::encode::to_vec(&upg)?);
-    let itms: Vec<i16> = game_state.items.iter().map(|hm| hm.get(&Item::Blink).map(|v| *v).or(Some(0))).flatten().collect();
-    v.append(&mut rmp_serde::encode::to_vec(&itms)?);
     v.append(&mut rmp_serde::encode::to_vec(&game_state.next_bounty)?);
     Ok(v)
 }
@@ -415,7 +410,7 @@ fn main() -> std::io::Result<()> {
     let mut interceptions = vec![];
     enum MouseState {
         Drag(Vector2),
-        Path(VecDeque<Vector2>, bool),
+        Path(VecDeque<Vector2>),
         Intercept,
         WaitReleaseLButton,
         None
@@ -526,7 +521,7 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                let mut start_message_path: Option<bool> = None;
+                let mut start_message_path = false;
                 let mut cancel = false;
                 let mut start_intercept = false;
                 loop {
@@ -555,20 +550,14 @@ fn main() -> std::io::Result<()> {
                                 },
                                 KeyboardKey::KEY_M => {
                                     if game_state.sub_selection == Some(SubSelection::Ship) {
-                                        start_message_path = Some(false)
-                                    }
-                                },
-                                KeyboardKey::KEY_B => {
-                                    if game_state.sub_selection == Some(SubSelection::Ship) &&
-                                        *game_state.items[p_id].entry(Item::Blink).or_insert(0) > 0 {
-                                        start_message_path = Some(true)
+                                        start_message_path = true
                                     }
                                 },
                                 KeyboardKey::KEY_I => { start_intercept = game_state.sub_selection == Some(SubSelection::Ship) },
                                 KeyboardKey::KEY_S => { shop_open = !shop_open }
                                 KeyboardKey::KEY_ESCAPE => {
                                     match mouse_state {
-                                        MouseState::Path(_, _) => { cancel = true }
+                                        MouseState::Path(_) => { cancel = true }
                                         MouseState::Intercept => { cancel = true }
                                         _ => {}
                                     }
@@ -611,8 +600,8 @@ fn main() -> std::io::Result<()> {
                     MouseState::None => {
                         if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
                             MouseState::Drag(mouse_position)
-                        } else if start_message_path.is_some() {
-                            MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]), start_message_path.unwrap())
+                        } else if start_message_path {
+                            MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]))
                         } else if start_intercept {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_CROSSHAIR);
                             MouseState::Intercept
@@ -656,7 +645,7 @@ fn main() -> std::io::Result<()> {
                             MouseState::None
                         }
                     },
-                    MouseState::Path(mut path, blink_imbued) => {
+                    MouseState::Path(mut path) => {
                         if cancel {
                             MouseState::None
                         } else {
@@ -666,16 +655,16 @@ fn main() -> std::io::Result<()> {
                                     path.push_back(m);
                                     path.push_back(eff_mouse_pos);
                                     if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) {
-                                        unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone(), blink_imbued: blink_imbued }));
+                                        unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
                                         MouseState::WaitReleaseLButton
                                     } else {
-                                        MouseState::Path(path, blink_imbued)
+                                        MouseState::Path(path)
                                     }
                                 } else {
-                                    MouseState::Path(path, blink_imbued)
+                                    MouseState::Path(path)
                                 }
                             } else {
-                                MouseState::Path(path, blink_imbued)
+                                MouseState::Path(path)
                             }
                         }
                     },
@@ -889,7 +878,7 @@ fn main() -> std::io::Result<()> {
                 message_spell_icons.render(&mut d, (*cooldowns.iter().min().unwrap() as f32)/(BLINK_COOLDOWN as f32));
             }
         } else if game_state.sub_selection == Some(SubSelection::Ship) {
-            ship_spell_icons.render(&mut d, *game_state.items[p_id].entry(Item::Blink).or_insert(0));
+            ship_spell_icons.render(&mut d);
         }
 
         for a in &interceptions {
@@ -910,9 +899,9 @@ fn main() -> std::io::Result<()> {
                 let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
                 d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::GREEN)
             },
-            MouseState::Path(ref path, blink_imbued) => {
+            MouseState::Path(ref path) => {
                 let mut p = path[0] + MESSAGE_SIZE.scale_by(0.5f32);
-                let col = if blink_imbued { rcolor(0, 0, 255, 100) } else { rcolor(0, 255, 0, 100) };
+                let col = rcolor(0, 255, 0, 100);
                 let bad_col = rcolor(255, 0, 0, 100);
                 for i in 1..path.len() {
                     let next_p = path[i] + MESSAGE_SIZE.scale_by(0.5f32);

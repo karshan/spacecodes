@@ -48,7 +48,7 @@ impl MessageSpellIcons {
     }
 }
 
-pub struct ShipSpellIcons([(Icon, char); 3]);
+pub struct ShipSpellIcons([(Icon, char); 2]);
 
 impl ShipSpellIcons {
     pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> ShipSpellIcons {
@@ -64,16 +64,12 @@ impl ShipSpellIcons {
                 tex: rl.load_texture(&thread, "sc-client/assets/message.png").unwrap(),
                 pos: start_pos + gap
             }, 'M'),
-            (Icon {
-                tex: rl.load_texture(&thread, "sc-client/assets/blinking_message.png").unwrap(),
-                pos: start_pos + gap.scale_by(2f32)
-            }, 'B')
         ])
     }
 
-    pub fn render(self: &Self, d: &mut RaylibDrawHandle, blinks: i16) {
+    pub fn render(self: &Self, d: &mut RaylibDrawHandle) {
         for (icon, c) in &self.0 {
-            icon.render(d, if *c != 'B' || blinks > 0 { Color::WHITE } else { rcolor(255, 255, 255, 100) });
+            icon.render(d, Color::WHITE);
             d.draw_text(&c.to_string(), icon.pos.x.round() as i32, icon.pos.y.round() as i32, 1, Color::BLACK);
         }
     }
@@ -89,7 +85,6 @@ pub fn text_icon(rl: &mut RaylibHandle, thread: &RaylibThread, s: &str, pos: Vec
 }
 
 pub struct Shop {
-    blink: Icon,
     intercept_speed: Icon,
     intercept_range: Icon,
 }
@@ -99,16 +94,13 @@ impl Shop {
         let first_pos = Vector2::new(PLAY_AREA.w as f32 - 200f32, PLAY_AREA.h as f32);
         let gap = Vector2::new(0f32, 20f32);
         Ok(Shop {
-            blink: text_icon(rl, thread, "Blink", first_pos)?,
             intercept_speed: text_icon(rl, thread, "I Speed", first_pos + gap)?,
             intercept_range: text_icon(rl, thread, "I Range", first_pos + gap.scale_by(2f32))?,
         })
     }
 
     pub fn click(self: &Self, mouse_position: Vector2) -> Option<ShopItem> {
-        if contains_point(&self.blink.rect(), &mouse_position) {
-            Some(ShopItem::Item(Item::Blink))
-        } else if contains_point(&self.intercept_speed.rect(), &mouse_position) {
+        if contains_point(&self.intercept_speed.rect(), &mouse_position) {
             Some(ShopItem::Upgrade(Upgrade::InterceptSpeed))
         } else if contains_point(&self.intercept_range.rect(), &mouse_position) {
             Some(ShopItem::Upgrade(Upgrade::InterceptRange))
@@ -121,7 +113,6 @@ impl Shop {
         d.draw_line(800, PLAY_AREA.h, 800, PLAY_AREA.h + 200, Color::BLACK);
         let col = Color::WHITE;
         let nogold = rcolor(255, 255, 255, 100);
-        self.blink.render(d, if gold >= Item::Blink.cost() { col } else { nogold });
         if !upgrades.contains(&Upgrade::InterceptSpeed) {
             self.intercept_speed.render(d, if gold >= Upgrade::InterceptSpeed.cost() { col } else { nogold });
         }
