@@ -97,6 +97,7 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
                         carrying_bounty: HashMap::new(),
                     });
                     game_state.spawn_cooldown[*player_id] = MSG_COOLDOWN;
+                    game_state.lumber[*player_id] -= max(0, path_lumber_cost(path) - MSG_FREE_LUMBER);
                 },
                 GameCommand::Intercept(InterceptCommand { pos }) => {
                     interceptions.push(Interception { pos: pos.clone(), start_frame: frame, player_id: i });
@@ -131,6 +132,17 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
     game_state.other_units.retain(|u| !u.dead);
 }
 
+fn apply_bounties(game_state: &mut GameState, p_id: usize, bounties: HashMap<BountyEnum, i32>) {
+    for (b_type, amt) in bounties.iter() {
+        match *b_type {
+            BountyEnum::Fuel => { game_state.fuel[p_id] += *amt },
+            BountyEnum::Gold => { game_state.gold[p_id] += *amt as f32 },
+            BountyEnum::Lumber => { game_state.lumber[p_id] += *amt },
+            _ => {}
+        }
+    }
+}
+
 fn deliver_messages(game_state: &mut GameState, p_id: usize) {
     let other_id = (p_id + 1) % 2;
 
@@ -139,23 +151,11 @@ fn deliver_messages(game_state: &mut GameState, p_id: usize) {
 
     let my_bounties = game_state.my_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
         .map(|u| { u.dead = true; u }).fold(HashMap::new(), |acc, e| hm_add(acc, &e.carrying_bounty));
-    for (b_type, amt) in my_bounties.iter() {
-        match *b_type {
-            BountyEnum::Fuel => { game_state.fuel[p_id] += *amt },
-            BountyEnum::Gold => { game_state.gold[p_id] += *amt as f32 },
-            _ => {}
-        }
-    }
+    apply_bounties(game_state, p_id, my_bounties);
     reap(game_state);
     let other_bounties = game_state.other_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
         .map(|u| { u.dead = true; u }).fold(HashMap::new(), |acc, e| hm_add(acc, &e.carrying_bounty));
-    for (b_type, amt) in other_bounties.iter() {
-        match *b_type {
-            BountyEnum::Fuel => { game_state.fuel[other_id] += *amt },
-            BountyEnum::Gold => { game_state.gold[other_id] += *amt as f32 },
-            _ => {}
-        }
-    }
+    apply_bounties(game_state, other_id, other_bounties);
     game_state.other_units.retain(|u| !u.dead);
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
@@ -443,6 +443,7 @@ fn main() -> std::io::Result<()> {
         fuel: [START_FUEL; 2],
         intercepted: [0; 2],
         gold: [STARTING_GOLD; 2],
+        lumber: [STARTING_LUMBER; 2],
         upgrades: [HashSet::new(), HashSet::new()],
         items: [HashMap::new(), HashMap::new()],
         bounties: vec![],
@@ -482,6 +483,7 @@ fn main() -> std::io::Result<()> {
 
     rl.set_exit_key(None);
     let mut intercept_err = false;
+    let mut not_enough_lumber = false;
     while !rl.window_should_close() {
         let mouse_position = rl.get_mouse_position();
         let fps = rl.get_fps();
@@ -531,6 +533,7 @@ fn main() -> std::io::Result<()> {
                             fuel: [START_FUEL; 2],
                             intercepted: [0; 2],
                             gold: [STARTING_GOLD; 2],
+                            lumber: [STARTING_LUMBER; 2],
                             upgrades: [HashSet::new(), HashSet::new()],
                             items: [HashMap::new(), HashMap::new()],
                             bounties: vec![],
@@ -657,6 +660,7 @@ fn main() -> std::io::Result<()> {
                 }
 
                 intercept_err = false;
+                not_enough_lumber = false;
                 mouse_state = match mouse_state {
                     MouseState::None => {
                         if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
@@ -719,8 +723,13 @@ fn main() -> std::io::Result<()> {
                                     }
                                     if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) ||
                                         station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
-                                        unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
-                                        MouseState::WaitReleaseLButton
+                                        if game_state.lumber[p_id] >= path_lumber_cost(&path) - MSG_FREE_LUMBER {
+                                            unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
+                                            MouseState::WaitReleaseLButton
+                                        } else {
+                                            not_enough_lumber = true;
+                                            MouseState::WaitReleaseLButton
+                                        }
                                     } else {
                                         MouseState::Path(path)
                                     }
@@ -894,6 +903,9 @@ fn main() -> std::io::Result<()> {
             if *u.carrying_bounty.get(&BountyEnum::Gold).unwrap_or(&0) > 0 {
                 d.draw_rectangle_v(u.pos + ms + mx, ms, BountyEnum::Gold.color());
             }
+            if *u.carrying_bounty.get(&BountyEnum::Lumber).unwrap_or(&0) > 0 {
+                d.draw_rectangle_v(u.pos + ms + my, ms, BountyEnum::Lumber.color());
+            }
             draw_bubble(&mut d, u, &c);
         }
 
@@ -976,7 +988,7 @@ fn main() -> std::io::Result<()> {
             d.draw_circle_v(a.pos, INTERCEPT_RADIUS, intercept_colors[a.player_id]);
         }
 
-        if intercept_err {
+        if intercept_err || not_enough_lumber {
             d.draw_circle_v(mouse_position, INTERCEPT_RADIUS, rcolor(255, 0, 0, 100));
         }
 
@@ -1027,8 +1039,6 @@ fn main() -> std::io::Result<()> {
         d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
         d.draw_text(&fps.to_string(), 20, 40, 20, Color::BLACK);
         d.draw_text(&packets_ps.peek().round().to_string(), 60, 40, 20, Color::BLACK);
-        d.draw_text(&format!("{}/{}", (game_state.fuel[p_id] * 100)/START_FUEL, (game_state.fuel[(p_id + 1) % 2] * 100)/START_FUEL), 20, 80, 20, Color::BLACK);
-        d.draw_text(&format!("{}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, 100, 20, Color::BLACK);
         if let Some(end_state) = ended {
             let end_str = match end_state {
                 Some(winner) => if winner == p_id { "YOU WON" } else { "YOU LOST" },
@@ -1038,13 +1048,16 @@ fn main() -> std::io::Result<()> {
         }
 
         d.draw_line(0, PLAY_AREA.h, PLAY_AREA.w, PLAY_AREA.h, Color::BLACK);
-        d.draw_text(&format!("{:?}", game_state.sub_selection), 20, PLAY_AREA.h, 20, Color::BLACK);
-        d.draw_text(&format!("{}", game_state.gold[p_id].round()), 20, PLAY_AREA.h + 20, 20, Color::BLACK);
+        if let Some(sub_sel) = game_state.sub_selection {
+            d.draw_text(&format!("Selected: {:?}", sub_sel), 20, PLAY_AREA.h, 20, Color::BLACK);
+        }
+        d.draw_text(&format!("Gold: {}", game_state.gold[p_id].round()), 20, PLAY_AREA.h + 20, 20, Color::BLACK);
+        d.draw_text(&format!("Lumber: {}", game_state.lumber[p_id]), 20, PLAY_AREA.h + 40, 20, Color::BLACK);
+        d.draw_text(&format!("Fuel: {}/{}", (game_state.fuel[p_id] * 100)/START_FUEL, (game_state.fuel[(p_id + 1) % 2] * 100)/START_FUEL), 20, PLAY_AREA.h + 60, 20, Color::BLACK);
+        d.draw_text(&format!("K/D: {}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, PLAY_AREA.h + 80, 20, Color::BLACK);
         if shop_open {
             shop.render(&mut d, &game_state.upgrades[p_id], game_state.gold[p_id]);
         }
-        d.draw_text(&format!("{:?}", game_state.upgrades[p_id]), 20, PLAY_AREA.h + 40, 20, Color::BLACK);
-        d.draw_text(&format!("{:?}", game_state.items[p_id]), 20, PLAY_AREA.h + 60, 20, Color::BLACK);
     }
     Ok(())
 }

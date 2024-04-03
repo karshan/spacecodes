@@ -119,7 +119,7 @@ impl BountyEnum {
         match self {
             BountyEnum::Gold => 50,
             BountyEnum::Fuel => MSG_FUEL * 3,
-            BountyEnum::Lumber => 60,
+            BountyEnum::Lumber => 20,
             BountyEnum::Blink => 0
         }
     }
@@ -153,6 +153,7 @@ pub struct GameState {
     pub fuel: [i32; 2],
     pub intercepted: [u8; 2],
     pub gold: [f32; 2],
+    pub lumber: [i32; 2],
     pub upgrades: [HashSet<Upgrade>; 2],
     pub items: [HashMap<Item, i16>; 2],
     pub spawn_cooldown: [i32; 2],
