@@ -109,8 +109,8 @@ impl BountyEnum {
     pub fn min(self) -> i32 {
         match self {
             BountyEnum::Gold => 4,
-            BountyEnum::Fuel => 6,
-            BountyEnum::Lumber => 6,
+            BountyEnum::Fuel => 4,
+            BountyEnum::Lumber => 4,
             BountyEnum::Blink => 4
         }
     }
