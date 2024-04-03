@@ -12,3 +12,5 @@ serde = { version = "1.0.197", features = ["derive"] }
 serde_derive = "1.0.197"
 num-traits = "0.2.18"
 serde_nested_with = "0.2.5"
+rand = "0.8.5"
+rand_chacha = "0.3.1"

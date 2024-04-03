@@ -786,6 +786,8 @@ name = "sc-types"
 version = "0.1.0"
 dependencies = [
  "num-traits",
+ "rand",
+ "rand_chacha",
  "raylib",
  "rmp-serde",
  "serde",

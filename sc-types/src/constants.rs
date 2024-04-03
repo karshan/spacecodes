@@ -1,5 +1,5 @@
 use crate::shapes::*;
-use raylib::prelude::{Vector2, Color};
+use raylib::prelude::Vector2;
 
 #[derive(Eq, PartialEq, Hash)]
 pub enum AreaEnum {
@@ -14,23 +14,19 @@ pub static START_FUEL: i32 = 1000 * 60;
 pub static FUEL_LOSS: i32 = 5; // per frame
 pub static PASSIVE_GOLD_GAIN: f32 = 0f32/60f32;
 pub static STARTING_GOLD: f32 = 100f32;
-pub static MSG_FUEL: i32 = 3600;
+pub static MSG_COOLDOWN: i32 = 10 * 60;
+pub static MSG_FUEL: i32 = FUEL_LOSS * 60 * 15;
 pub static MSG_BUBBLE_LEN: f32 = 80f32;
 pub static MSG_BUBBLE_WIDTH: f32 = MESSAGE_SIZE.x;
 pub static MSG_DELIVERY_GOLD_BOUNTY: f32 = 0f32;
 pub static MESSAGE_SIZE: &Vector2 = &Vector2 { x: 20f32, y: 20f32 };
 pub static BOUNTY_SIZE: &Vector2 = &Vector2 { x: 20f32, y: 20f32 };
-pub static BOUNTY_COLOR: Color = Color::ORANGE;
-pub static BOUNTY_GOLD: f32 = 100f32;
-pub static BOUNTY_TIME_MIN: u32 = 300;
-pub static BOUNTY_TIME_RANGE: u32 = 600;
-pub static MAX_BOUNTIES: usize = 4;
 pub static BLINK_COOLDOWN: i32 = 900;
 pub static INTERCEPT_RADIUS: f32 = 30f32;
-pub static INTERCEPT_COST: f32 = 500f32;
+pub static INTERCEPT_COST: f32 = 100f32;
 pub static INTERCEPT_EXPIRY: f32 = 2f32 * 60f32;
 pub static BLINK_RANGE: f32 = 120f32;
-pub static KILLS_TO_WIN: u8 = 10;
+pub static KILLS_TO_WIN: u8 = 5;
 pub static PLAY_AREA: Rect<i32> = Rect {
     x: 0, y: 0,
     w: 1000, h: 1000,

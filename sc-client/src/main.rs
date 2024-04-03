@@ -10,7 +10,6 @@ use sc_types::*;
 use sc_types::shapes::*;
 extern crate rmp_serde as rmps;
 use rand_chacha::*;
-use rand_core::*;
 use rand::*;
 
 mod util;
@@ -83,7 +82,7 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
             match u {
                 GameCommand::Blink(BlinkCommand { u_id }) => {
                     if *u_id < units.len() {
-                        units[*u_id].cooldown = units[*u_id].cooldown();
+                        units[*u_id].blink_cooldown = units[*u_id].cooldown();
                         units[*u_id].blinking = Some(true);
                     }
                 },
@@ -94,9 +93,10 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
                         pos: path[0],
                         path: path.clone(),
                         blinking: None,
-                        cooldown: 0,
-                        carrying_bounty: 0f32,
+                        blink_cooldown: 0,
+                        carrying_bounty: HashMap::new(),
                     });
+                    game_state.spawn_cooldown[*player_id] = MSG_COOLDOWN;
                 },
                 GameCommand::Intercept(InterceptCommand { pos }) => {
                     interceptions.push(Interception { pos: pos.clone(), start_frame: frame, player_id: i });
@@ -131,17 +131,31 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
     game_state.other_units.retain(|u| !u.dead);
 }
 
-fn add_fuel(game_state: &mut GameState, p_id: usize) {
+fn deliver_messages(game_state: &mut GameState, p_id: usize) {
     let other_id = (p_id + 1) % 2;
 
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
 
-    game_state.gold[p_id] += game_state.my_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
-        .map(|u| { u.dead = true; u }).fold(0f32, |acc, e| acc + e.carrying_bounty);
+    let my_bounties = game_state.my_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
+        .map(|u| { u.dead = true; u }).fold(HashMap::new(), |acc, e| hm_add(acc, &e.carrying_bounty));
+    for (b_type, amt) in my_bounties.iter() {
+        match *b_type {
+            BountyEnum::Fuel => { game_state.fuel[p_id] += *amt },
+            BountyEnum::Gold => { game_state.gold[p_id] += *amt as f32 },
+            _ => {}
+        }
+    }
     reap(game_state);
-    game_state.gold[other_id] += game_state.other_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
-        .map(|u| { u.dead = true; u }).fold(0f32, |acc, e| acc + e.carrying_bounty);
+    let other_bounties = game_state.other_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
+        .map(|u| { u.dead = true; u }).fold(HashMap::new(), |acc, e| hm_add(acc, &e.carrying_bounty));
+    for (b_type, amt) in other_bounties.iter() {
+        match *b_type {
+            BountyEnum::Fuel => { game_state.fuel[other_id] += *amt },
+            BountyEnum::Gold => { game_state.gold[other_id] += *amt as f32 },
+            _ => {}
+        }
+    }
     game_state.other_units.retain(|u| !u.dead);
 
     game_state.fuel[p_id] = min(START_FUEL, game_state.fuel[p_id] + (num_my_units - game_state.my_units.len() as i32) * MSG_FUEL);
@@ -153,11 +167,12 @@ fn add_fuel(game_state: &mut GameState, p_id: usize) {
 
 fn tick(game_state: &mut GameState) {
     for u in game_state.my_units.iter_mut().chain(game_state.other_units.iter_mut()) {
-        u.cooldown = max(0, u.cooldown - 1);
+        u.blink_cooldown = max(0, u.blink_cooldown - 1);
     }
 
     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
     game_state.gold.iter_mut().for_each(|g| *g += PASSIVE_GOLD_GAIN);
+    game_state.spawn_cooldown.iter_mut().for_each(|s| *s -= 1);
 }
 
 fn collide_units(units: &Vec<Unit>, p: &Vector2, s: &Vector2) -> Vec<usize> {
@@ -218,14 +233,19 @@ fn reap(game_state: &mut GameState) {
     game_state.my_units.retain(|u| !u.dead);
 }
 
+fn no_hmap_units(units: &Vec<Unit>) -> Vec<Unit> {
+    units.iter().map(|u| Unit { carrying_bounty: HashMap::new(), ..u.clone() }).collect()
+}
+
 fn serialize_state(game_state: &GameState, p_id: usize) -> Result<Vec<u8>, rmps::encode::Error> {
     let mut v;
+    // FIXME serialize units.carrying_bounty
     if p_id == 0 {
-        v = rmp_serde::encode::to_vec(&game_state.my_units)?;
-        v.append(&mut rmp_serde::encode::to_vec(&game_state.other_units)?);
+        v = rmp_serde::encode::to_vec(&no_hmap_units(&game_state.my_units))?;
+        v.append(&mut rmp_serde::encode::to_vec(&no_hmap_units(&game_state.other_units))?);
     } else {
-        v = rmp_serde::encode::to_vec(&game_state.other_units)?;
-        v.append(&mut rmp_serde::encode::to_vec(&game_state.my_units)?);
+        v = rmp_serde::encode::to_vec(&no_hmap_units(&game_state.other_units))?;
+        v.append(&mut rmp_serde::encode::to_vec(&no_hmap_units(&game_state.my_units))?);
     }
     v.append(&mut rmp_serde::encode::to_vec(&game_state.fuel)?);
     v.append(&mut rmp_serde::encode::to_vec(&game_state.intercepted)?);
@@ -233,7 +253,8 @@ fn serialize_state(game_state: &GameState, p_id: usize) -> Result<Vec<u8>, rmps:
     // FIXME serialize upgrades and items correctly (easiest might be to convert to sorted vec and serialize)
     let upg: Vec<usize> = game_state.upgrades.iter().map(|hs| hs.len()).collect();
     v.append(&mut rmp_serde::encode::to_vec(&upg)?);
-    v.append(&mut rmp_serde::encode::to_vec(&game_state.next_bounty)?);
+    v.append(&mut rmp_serde::encode::to_vec(&game_state.bounties)?);
+    // FIXME serialize game_state.next_bounty
     Ok(v)
 }
 
@@ -268,17 +289,21 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vec
     }
 }
 
-fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
-    if game_state.bounties.len() < MAX_BOUNTIES {
-        let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
-        // Check against play area so the entire bounty rect is inside
-        while !PLAY_AREA.contains(&bounty_rect(&b)) ||
-                GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b)) ||
-                BLOCKED.iter().any(|r| r.collide(&bounty_rect(&b)))) {
-            b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
+fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng, frame_counter: i64) {
+    for b_type in [BountyEnum::Blink, BountyEnum::Fuel, BountyEnum::Gold, BountyEnum::Lumber] {
+        while game_state.bounties.iter().filter(|b| b.type_ == b_type).count() < b_type.min() as usize {
+            let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
+            while !PLAY_AREA.contains(&bounty_rect(&b)) ||
+                    GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b)) ||
+                    BLOCKED.iter().any(|r| r.collide(&bounty_rect(&b)))) ||
+                    (rect_center(ship(0)) - b).length() < 150f32 ||
+                    (rect_center(ship(1)) - b).length() < 150f32 ||
+                    game_state.bounties.iter().any(|existing_b| bounty_rect(&existing_b.pos).collide(&bounty_rect(&b))) {
+                b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
+            }
+            game_state.bounties.push(Bounty { type_: b_type, amount: b_type.amount(rng), pos: b });
         }
-        game_state.bounties.push(b);
-    }
+    }      
 }
 
 fn bounty_rect(b: &Vector2) -> Rect<i32> {
@@ -286,20 +311,29 @@ fn bounty_rect(b: &Vector2) -> Rect<i32> {
 }
 
 fn collide_bounties(game_state: &mut GameState) {
+    let pack_bounty = |m_unit: Option<&mut Unit>, b: &Bounty| {
+        if let Some(unit) = m_unit {
+            if b.type_ == BountyEnum::Blink {
+                unit.blink_cooldown = 0;
+                if unit.blinking.is_none() {
+                    unit.blinking = Some(false);
+                }
+            } else {
+                unit.carrying_bounty.entry(b.type_).and_modify(|e| *e += b.amount).or_insert(b.amount);
+            }
+        } 
+    };
+
     for b in &game_state.bounties {
-        let m_mine = game_state.my_units.iter_mut().find(|u| u.rect().collide(&bounty_rect(b)));
-        let m_other = game_state.other_units.iter_mut().find(|u| u.rect().collide(&bounty_rect(b)));
-        if let Some(mine) = m_mine {
-            mine.carrying_bounty += BOUNTY_GOLD;
-        }
-        if let Some(other) = m_other {
-            other.carrying_bounty += BOUNTY_GOLD;
-        }
+        let m_mine = game_state.my_units.iter_mut().find(|u| u.rect().collide(&bounty_rect(&b.pos)));
+        let m_other = game_state.other_units.iter_mut().find(|u| u.rect().collide(&bounty_rect(&b.pos)));
+        pack_bounty(m_mine, b);
+        pack_bounty(m_other, b);
     }
 
     // PERF loop only once
-    game_state.bounties.retain(|b| !game_state.my_units.iter().any(|u| u.rect().collide(&bounty_rect(b))) &&
-        !game_state.other_units.iter().any(|u| u.rect().collide(&bounty_rect(b))))
+    game_state.bounties.retain(|b| !game_state.my_units.iter().any(|u| u.rect().collide(&bounty_rect(&b.pos))) &&
+        !game_state.other_units.iter().any(|u| u.rect().collide(&bounty_rect(&b.pos))))
 }
 
 fn bubble_rect(u: &Unit) -> Rect<i32> {
@@ -342,9 +376,9 @@ fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let max_input_queue = 10;
     let area_colors = HashMap::from([
-        (AreaEnum::P0Spawn, Color::from_hex("0077B6").unwrap()),
+        (AreaEnum::P0Spawn, rcolor(0, 0x77, 0xb6, 100)),
         (AreaEnum::P0Station, Color::from_hex("0077B6").unwrap()),
-        (AreaEnum::P1Spawn, Color::from_hex("1B4332").unwrap()),
+        (AreaEnum::P1Spawn, rcolor(0x1b, 0x43, 0x32, 100)),
         (AreaEnum::P1Station, Color::from_hex("1B4332").unwrap()),
         (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
     ]);
@@ -392,7 +426,8 @@ fn main() -> std::io::Result<()> {
         upgrades: [HashSet::new(), HashSet::new()],
         items: [HashMap::new(), HashMap::new()],
         bounties: vec![],
-        next_bounty: 0
+        last_bounty: HashMap::new(),
+        spawn_cooldown: [0; 2],
     };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
@@ -479,7 +514,13 @@ fn main() -> std::io::Result<()> {
                             upgrades: [HashSet::new(), HashSet::new()],
                             items: [HashMap::new(), HashMap::new()],
                             bounties: vec![],
-                            next_bounty: BOUNTY_TIME_MIN + (rng.next_u32() % BOUNTY_TIME_RANGE) as u32
+                            last_bounty: HashMap::from([
+                                (BountyEnum::Blink, 0),
+                                (BountyEnum::Fuel, 0),
+                                (BountyEnum::Gold, 0),
+                                (BountyEnum::Lumber, 0)
+                            ]),
+                            spawn_cooldown: [0; 2],
                         };
                         ClientState::Started
                     },
@@ -549,7 +590,7 @@ fn main() -> std::io::Result<()> {
                                     }
                                 },
                                 KeyboardKey::KEY_M => {
-                                    if game_state.sub_selection == Some(SubSelection::Ship) {
+                                    if game_state.sub_selection == Some(SubSelection::Ship) && game_state.spawn_cooldown[p_id] <= 0 {
                                         start_message_path = true
                                     }
                                 },
@@ -564,7 +605,7 @@ fn main() -> std::io::Result<()> {
                                 },
                                 KeyboardKey::KEY_SPACE => {
                                     for (u_id, u) in selected_units(&game_state) {
-                                        if u.cooldown <= 0 && u.blinking.is_some() {
+                                        if u.blink_cooldown <= 0 && u.blinking.is_some() {
                                             unsent_pkt.push(GameCommand::Blink(BlinkCommand { u_id }));
                                         }
                                     }
@@ -714,15 +755,12 @@ fn main() -> std::io::Result<()> {
 
                 if frame_state == FrameState::Both || (frame_counter % 2 == 1) {
                     apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
-                    if frame_counter as u32 == game_state.next_bounty {
-                        game_state.next_bounty = frame_counter as u32 + BOUNTY_TIME_MIN + (rng.next_u32() % BOUNTY_TIME_RANGE);
-                        add_bounty(&mut game_state, &mut rng);
-                    }
+                    add_bounty(&mut game_state, &mut rng, frame_counter);
                     recvd_pkt = vec![];
                     sent_pkt = vec![];
                     move_units(&mut game_state.my_units);
                     move_units(&mut game_state.other_units);
-                    add_fuel(&mut game_state, p_id);
+                    deliver_messages(&mut game_state, p_id);
                     collide_bounties(&mut game_state);
                     tick(&mut game_state);
                     frame_counter += 1;
@@ -785,12 +823,21 @@ fn main() -> std::io::Result<()> {
 
         for (t, r) in &GAME_MAP {
             match t {
+                AreaEnum::P0Spawn => {
+                    d.draw_rectangle(r.x, r.y, r.w, (r.h * game_state.spawn_cooldown[0])/MSG_COOLDOWN, area_colors[&t]);
+                    d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
+                }
+                AreaEnum::P1Spawn => {
+                    d.draw_rectangle(r.x, r.y, (r.w * game_state.spawn_cooldown[1])/MSG_COOLDOWN, r.h, area_colors[&t]);
+                    d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
+                }
                 AreaEnum::P0Station => {
                     d.draw_rectangle(r.x, r.y, r.w, (r.h * game_state.fuel[0])/START_FUEL, area_colors[&t]);
                     d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
                 }
                 AreaEnum::P1Station => {
-                    d.draw_rectangle(r.x + (r.w * (START_FUEL - game_state.fuel[1]))/START_FUEL, r.y, (r.w * game_state.fuel[1])/START_FUEL, r.h, area_colors[&t]);
+                    let w = (r.w * game_state.fuel[1])/START_FUEL;
+                    d.draw_rectangle(r.x + (r.w - w), r.y, w, r.h, area_colors[&t]);
                     d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
                 }
                 AreaEnum::Blocked => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),
@@ -814,20 +861,36 @@ fn main() -> std::io::Result<()> {
             } else {
                 d.draw_rectangle_v(u.pos, u.size(), c);
             }
+
+            let mx = Vector2::new(5f32, 0f32);
+            let my = Vector2::new(0f32, 5f32);
+            let ms = mx + my;
+            if *u.carrying_bounty.get(&BountyEnum::Fuel).unwrap_or(&0) > 0 {
+                d.draw_rectangle_v(u.pos + ms, ms, BountyEnum::Fuel.color());
+            }
+            if *u.carrying_bounty.get(&BountyEnum::Gold).unwrap_or(&0) > 0 {
+                d.draw_rectangle_v(u.pos + ms + mx, ms, BountyEnum::Gold.color());
+            }
             draw_bubble(&mut d, u, &c);
         }
 
+        let mut sel_color = rcolor(0, 0, 0, 100);
         for s in &game_state.selection {
             match s {
                 Selection::Unit(u_id) => {
+                    if let Some(SubSelection::Unit) = game_state.sub_selection {
+                        sel_color = rcolor(0, 0, 0, 150);
+                    } else {
+                        sel_color = rcolor(0, 0, 0, 100);
+                    }
                     let u = &game_state.my_units[*u_id];
                     if u.blinking.is_some() {
                         let cen = u.pos + u.size().scale_by(0.5f32);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 1f32, Color::BLACK);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 2f32, Color::BLACK);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 3f32, Color::BLACK);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 4f32, Color::BLACK);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32, Color::BLACK);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 1f32, sel_color);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 2f32, sel_color);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 3f32, sel_color);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 4f32, sel_color);
+                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32, sel_color);
                     } else {
                         let u_r = u.rect();
                         let r = Rectangle {
@@ -836,7 +899,7 @@ fn main() -> std::io::Result<()> {
                             width: u_r.w as f32,
                             height: u_r.h as f32,
                         };
-                        d.draw_rectangle_lines_ex(r, 5, Color::BLACK);
+                        d.draw_rectangle_lines_ex(r, 5, sel_color);
                     }
                     if !u.path.is_empty() {
                         let mut p = u.pos + u.size().scale_by(0.5f32);
@@ -849,6 +912,11 @@ fn main() -> std::io::Result<()> {
                     }
                 },
                 Selection::Ship => {
+                    if let Some(SubSelection::Ship) = game_state.sub_selection {
+                        sel_color = rcolor(0, 0, 0, 150);
+                    } else {
+                        sel_color = rcolor(0, 0, 0, 100);
+                    }
                     let rect = ship(p_id);
                     let r = Rectangle {
                         x: rect.x as f32,
@@ -856,11 +924,11 @@ fn main() -> std::io::Result<()> {
                         width: rect.w as f32,
                         height: rect.h as f32,
                     };
-                    d.draw_rectangle_lines_ex(r, 5, Color::BLACK);
+                    d.draw_rectangle_lines_ex(r, 5, sel_color);
                 },
                 Selection::Station => {
                     let rect = station(p_id);
-                    d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, Color::BLACK)
+                    d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, sel_color)
                 },
             }
         }   
@@ -870,7 +938,7 @@ fn main() -> std::io::Result<()> {
                 game_state.selection.iter().map(
                     |s| if let Selection::Unit(uid) = s {
                         let u = &game_state.my_units[*uid];
-                        u.blinking.map(|_| game_state.my_units[*uid].cooldown)
+                        u.blinking.map(|_| game_state.my_units[*uid].blink_cooldown)
                     } else { None }
                 ).flatten().collect();
 
@@ -890,7 +958,7 @@ fn main() -> std::io::Result<()> {
         }
 
         for b in &game_state.bounties {
-            d.draw_rectangle_v(b, BOUNTY_SIZE, BOUNTY_COLOR);
+            d.draw_rectangle_v(b.pos, BOUNTY_SIZE, b.type_.color());
         }
 
         match mouse_state {
@@ -926,6 +994,7 @@ fn main() -> std::io::Result<()> {
         d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
         d.draw_text(&fps.to_string(), 20, 40, 20, Color::BLACK);
         d.draw_text(&packets_ps.peek().round().to_string(), 60, 40, 20, Color::BLACK);
+        d.draw_text(&format!("{}/{}", (game_state.fuel[p_id] * 100)/START_FUEL, (game_state.fuel[(p_id + 1) % 2] * 100)/START_FUEL), 20, 80, 20, Color::BLACK);
         d.draw_text(&format!("{}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, 100, 20, Color::BLACK);
         if let Some(end_state) = ended {
             let end_str = match end_state {

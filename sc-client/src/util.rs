@@ -1,9 +1,17 @@
 extern crate rmp_serde as rmps;
 
-use std::{net::{SocketAddr, UdpSocket}, time::Instant};
+use std::{collections::HashMap, hash::Hash, net::{SocketAddr, UdpSocket}, ops::AddAssign, time::Instant};
 use num_traits::Zero;
 use sc_types::{ClientPkt, SeqState, ServerEnum, ServerPkt};
 use std::io;
+
+pub fn hm_add<K: Hash + Clone + Copy + Eq, V: AddAssign + Copy + Clone>(a: HashMap<K, V>, b: &HashMap<K, V>) -> HashMap<K, V> {
+    let mut out = a.clone();
+    for (k, v) in b.iter() {
+        out.entry(*k).and_modify(|e| *e += *v).or_insert(*v);
+    }
+    out
+}
 
 pub fn socket_recv(socket: &UdpSocket, expected_addr: &SocketAddr, seq_state: &mut SeqState) -> Option<ServerEnum> {
     let mut buf = [0u8; 16000];

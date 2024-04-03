@@ -1,9 +1,11 @@
 // extern crate serde;
 extern crate serde_derive;
 
-use std::collections::{HashMap, HashSet, VecDeque};
-use constants::{BLINK_COOLDOWN, MESSAGE_SIZE};
+use std::{collections::{HashMap, HashSet, VecDeque}, hash::Hash};
+use constants::{BLINK_COOLDOWN, MESSAGE_SIZE, MSG_FUEL};
 use raylib::prelude::{Vector2, Color, rcolor};
+use rand::Rng;
+use rand_chacha::ChaCha20Rng;
 
 pub mod shapes;
 use serde::{Deserialize, Serialize};
@@ -95,6 +97,51 @@ impl Item {
     }
 }
 
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BountyEnum {
+    Gold,
+    Fuel,
+    Lumber,
+    Blink
+}
+
+impl BountyEnum {
+    pub fn min(self) -> i32 {
+        match self {
+            BountyEnum::Gold => 4,
+            BountyEnum::Fuel => 6,
+            BountyEnum::Lumber => 6,
+            BountyEnum::Blink => 4
+        }
+    }
+
+    pub fn amount(self, rng: &mut ChaCha20Rng) -> i32 {
+        match self {
+            BountyEnum::Gold => 50,
+            BountyEnum::Fuel => MSG_FUEL * 3,
+            BountyEnum::Lumber => 60,
+            BountyEnum::Blink => 0
+        }
+    }
+
+    pub fn color(self) -> Color {
+        match self {
+            BountyEnum::Blink => Color::BLUE,
+            BountyEnum::Fuel => Color::BLACK,
+            BountyEnum::Gold => Color::ORANGE,
+            BountyEnum::Lumber => Color::BROWN,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Serialize, Deserialize)]
+pub struct Bounty {
+    pub type_: BountyEnum,
+    pub amount: i32,
+    #[serde(with = "Vector2Def")]
+    pub pos: Vector2,
+}
+
 #[derive(Clone)]
 pub struct GameState {
     pub my_units: Vec<Unit>,
@@ -108,8 +155,9 @@ pub struct GameState {
     pub gold: [f32; 2],
     pub upgrades: [HashSet<Upgrade>; 2],
     pub items: [HashMap<Item, i16>; 2],
-    pub bounties: Vec<Vector2>,
-    pub next_bounty: u32,
+    pub spawn_cooldown: [i32; 2],
+    pub bounties: Vec<Bounty>,
+    pub last_bounty: HashMap<BountyEnum, i32>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -135,8 +183,8 @@ pub struct Unit {
     #[serde_nested(sub = "Vector2", serde(with = "Vector2Def"))]
     pub path: VecDeque<Vector2>,
     pub blinking: Option<bool>,
-    pub cooldown: i32,
-    pub carrying_bounty: f32,
+    pub blink_cooldown: i32,
+    pub carrying_bounty: HashMap<BountyEnum, i32>,
 }
 
 pub fn unit_rect(pos: &Vector2, size: &Vector2) -> Rect<i32> {
