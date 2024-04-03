@@ -258,7 +258,7 @@ fn serialize_state(game_state: &GameState, p_id: usize) -> Result<Vec<u8>, rmps:
     Ok(v)
 }
 
-fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vector2> {
+fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> (bool, Vector2) {
     let m1 = Vector2 { x: p1.x, y: p2.y };
     let m2 = Vector2 { x: p2.x, y: p1.y };
     let sx = Vector2 { x: MESSAGE_SIZE.x, y: 0f32 };
@@ -270,21 +270,26 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vec
     let m2_ok = !path_collides(&blocked, offsets, p1, m2) && !path_collides(&blocked, offsets, m2, p2);
     let p1_ok = PLAY_AREA.contains(&unit_rect(&p1, MESSAGE_SIZE));
     let p2_ok = PLAY_AREA.contains(&unit_rect(&p2, MESSAGE_SIZE));
+    let none = if (p1.x - p2.x).abs() < (p1.y - p2.y).abs() {
+            (false, m1)
+        } else {
+            (false, m2)
+        };
     if !p1_ok || !p2_ok {
-        None
+        none
     } else {
         if m1_ok && m2_ok {
             if (p1.x - p2.x).abs() < (p1.y - p2.y).abs() {
-                Some(m1)
+                (true, m1)
             } else {
-                Some(m2)
+                (true, m2)
             }
         } else if m1_ok {
-            Some(m1)
+            (true, m1)
         } else if m2_ok {
-            Some(m2)
+            (true, m2)
         } else {
-            None
+            none
         }
     }
 }
@@ -692,7 +697,7 @@ fn main() -> std::io::Result<()> {
                         } else {
                             if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
                                 let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
-                                if let Some(m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
+                                if let (true, m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
                                     path.push_back(m);
                                     path.push_back(eff_mouse_pos);
                                     if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) {
@@ -906,7 +911,7 @@ fn main() -> std::io::Result<()> {
                         let col = rcolor(0, 255, 0, 100);
                         for i in 0..u.path.len() {
                             let next_p = u.path[i] + u.size().scale_by(0.5f32);
-                            d.draw_line_v(p, next_p, col);
+                            d.draw_line_ex(p, next_p, 2f32, col);
                             p = next_p;
                         }
                     }
@@ -973,18 +978,19 @@ fn main() -> std::io::Result<()> {
                 let bad_col = rcolor(255, 0, 0, 100);
                 for i in 1..path.len() {
                     let next_p = path[i] + MESSAGE_SIZE.scale_by(0.5f32);
-                    d.draw_line_v(p, next_p, col);
+                    d.draw_line_ex(p, next_p, 2f32, col);
                     p = next_p;
                 }
 
                 let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
                 match get_manhattan_turn_point(p - MESSAGE_SIZE.scale_by(0.5f32), eff_mouse_pos, p_id) {
-                    Some(m) => {
-                        d.draw_line_v(p, m + MESSAGE_SIZE.scale_by(0.5f32), col);
-                        d.draw_line_v(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, col);
+                    (true, m) => {
+                        d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), 2f32, col);
+                        d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, 2f32, col);
                     }
-                    None => {
-                        d.draw_line_v(p, mouse_position, bad_col);
+                    (false, m) => {
+                        d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), 2f32, bad_col);
+                        d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, 2f32, bad_col);
                     }
                 }
             },
