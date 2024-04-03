@@ -586,6 +586,7 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
+                intercept_err = false;
                 let mut start_message_path = false;
                 let mut cancel = false;
                 let mut start_intercept = false;
@@ -618,7 +619,15 @@ fn main() -> std::io::Result<()> {
                                         start_message_path = true
                                     }
                                 },
-                                KeyboardKey::KEY_I => { start_intercept = game_state.sub_selection == Some(SubSelection::Ship) },
+                                KeyboardKey::KEY_I => { 
+                                    if game_state.sub_selection == Some(SubSelection::Ship) {
+                                        if game_state.gold[p_id] < INTERCEPT_COST {
+                                            intercept_err = true;
+                                        } else {
+                                            start_intercept = true;
+                                        }
+                                    }
+                                }
                                 KeyboardKey::KEY_S => { shop_open = !shop_open }
                                 KeyboardKey::KEY_ESCAPE => {
                                     match mouse_state {
@@ -660,7 +669,6 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                intercept_err = false;
                 not_enough_lumber = false;
                 mouse_state = match mouse_state {
                     MouseState::None => {
