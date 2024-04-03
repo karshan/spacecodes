@@ -1006,6 +1006,7 @@ fn main() -> std::io::Result<()> {
             d.draw_rectangle_v(b.pos, BOUNTY_SIZE, b.type_.color());
         }
 
+        let path_width = 20f32;
         match mouse_state {
             MouseState::Drag(start_pos) => {
                 let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
@@ -1018,7 +1019,7 @@ fn main() -> std::io::Result<()> {
                 let bad_col = rcolor(255, 0, 0, 100);
                 for i in 1..path.len() {
                     let next_p = path[i] + MESSAGE_SIZE.scale_by(0.5f32);
-                    d.draw_line_ex(p, next_p, 2f32, col);
+                    d.draw_line_ex(p, next_p, path_width, col);
                     p = next_p;
                 }
 
@@ -1033,12 +1034,12 @@ fn main() -> std::io::Result<()> {
                             tmp_path.push_back(eff_mouse_pos);
                         }
                         cost = max(0, path_lumber_cost(&tmp_path) - MSG_FREE_LUMBER);
-                        d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), 2f32, col);
-                        d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, 2f32, col);
+                        d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), path_width, col);
+                        d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, path_width, col);
                     }
                     (false, m) => {
-                        d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), 2f32, bad_col);
-                        d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, 2f32, bad_col);
+                        d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), path_width, bad_col);
+                        d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, path_width, bad_col);
                     }
                 }
                 d.draw_text(&format!("{}", cost), cost_pos.x.round() as i32, cost_pos.y.round() as i32, 20, Color::BLACK);
@@ -1061,8 +1062,8 @@ fn main() -> std::io::Result<()> {
         if let Some(sub_sel) = game_state.sub_selection {
             d.draw_text(&format!("Selected: {:?}", sub_sel), 20, PLAY_AREA.h, 20, Color::BLACK);
         }
-        d.draw_text(&format!("Gold: {}", game_state.gold[p_id].round()), 20, PLAY_AREA.h + 20, 20, Color::BLACK);
-        d.draw_text(&format!("Lumber: {}", game_state.lumber[p_id]), 20, PLAY_AREA.h + 40, 20, Color::BLACK);
+        d.draw_text(&format!("Gold: {}/{}", game_state.gold[p_id].round(), game_state.gold[(p_id + 1) % 2].round()), 20, PLAY_AREA.h + 20, 20, Color::BLACK);
+        d.draw_text(&format!("Lumber: {}/{}", game_state.lumber[p_id], game_state.lumber[(p_id + 1) % 2]), 20, PLAY_AREA.h + 40, 20, Color::BLACK);
         d.draw_text(&format!("Fuel: {}/{}", (game_state.fuel[p_id] * 100)/START_FUEL, (game_state.fuel[(p_id + 1) % 2] * 100)/START_FUEL), 20, PLAY_AREA.h + 60, 20, Color::BLACK);
         d.draw_text(&format!("K/D: {}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, PLAY_AREA.h + 80, 20, Color::BLACK);
         if shop_open {
