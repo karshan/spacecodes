@@ -50,7 +50,7 @@ fn main() -> io::Result<()> {
                             player_id: p_id
                         }
                     };
-                    match  rmp_serde::encode::to_vec(&server_pkt) {
+                    match rmp_serde::encode::to_vec(&server_pkt) {
                         Ok(buf) => {
                             socket.send_to(&buf, peer).await?;
                             seq_state.send();
@@ -94,6 +94,7 @@ fn main() -> io::Result<()> {
                         },
                         ServerState::Ended(ended_addr) => {
                             if peer != ended_addr {
+                                state_hashes.clear();
                                 conn_states.clear();
                                 state = ServerState::Waiting
                             }
