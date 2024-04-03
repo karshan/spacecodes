@@ -377,6 +377,21 @@ fn draw_bubble(d: &mut RaylibDrawHandle, u: &Unit, c: &Color) {
     d.draw_rectangle_lines(b.x, b.y, b.w, b.h, c)
 }
 
+fn path_lumber_cost(path: &VecDeque<Vector2>) -> i32 {
+    if path.len() <= 1 {
+        0
+    } else {
+        path.iter().skip(2).fold((0, path[1], (path[1] - path[0]).normalized()), |(acc, last, dir), e| {
+            let new_dir = (*e - last).normalized();
+            if new_dir == dir {
+                (acc, *e, new_dir)
+            } else {
+                (acc + 1, *e, new_dir)
+            }
+        }).0
+    }
+}
+
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let max_input_queue = 10;
@@ -699,8 +714,11 @@ fn main() -> std::io::Result<()> {
                                 let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
                                 if let (true, m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
                                     path.push_back(m);
-                                    path.push_back(eff_mouse_pos);
-                                    if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) {
+                                    if !station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
+                                        path.push_back(eff_mouse_pos);
+                                    }
+                                    if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) ||
+                                        station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
                                         unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
                                         MouseState::WaitReleaseLButton
                                     } else {
@@ -982,9 +1000,17 @@ fn main() -> std::io::Result<()> {
                     p = next_p;
                 }
 
+                let cost_pos = rect_center(ship(p_id)) - Vector2::new(5f32, 10f32);
+                let mut cost = max(0, path_lumber_cost(path) - MSG_FREE_LUMBER);
                 let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
                 match get_manhattan_turn_point(p - MESSAGE_SIZE.scale_by(0.5f32), eff_mouse_pos, p_id) {
                     (true, m) => {
+                        let mut tmp_path = path.clone();
+                        tmp_path.push_back(m);
+                        if !station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
+                            tmp_path.push_back(eff_mouse_pos);
+                        }
+                        cost = max(0, path_lumber_cost(&tmp_path) - MSG_FREE_LUMBER);
                         d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), 2f32, col);
                         d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, 2f32, col);
                     }
@@ -993,6 +1019,7 @@ fn main() -> std::io::Result<()> {
                         d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, 2f32, bad_col);
                     }
                 }
+                d.draw_text(&format!("{}", cost), cost_pos.x.round() as i32, cost_pos.y.round() as i32, 20, Color::BLACK);
             },
             _ => {}
         }
