@@ -1,7 +1,4 @@
 #Features
- * Thicker path line
- * visually indicate messages carrying bounties
- * Paths have a minimum line segment length
  * server sets constants (GAME_MAP, INTERCEPT_COST, PASSIVE_GOLD_GAIN etc.)
  * bounty runes 100/200g
  * Visual feedback on spell icons when pressing hotkey

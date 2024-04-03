@@ -242,7 +242,7 @@ fn serialize_state(game_state: &GameState, p_id: usize) -> Result<Vec<u8>, rmps:
     Ok(v)
 }
 
-fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize, path: &VecDeque<Vector2>) -> (bool, Vector2) {
+fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> Option<Vector2> {
     let m1 = Vector2 { x: p1.x, y: p2.y };
     let m2 = Vector2 { x: p2.x, y: p1.y };
     let sx = Vector2 { x: MESSAGE_SIZE.x, y: 0f32 };
@@ -250,33 +250,25 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize, path: &VecDeq
     let offsets = [ Vector2::zero(), sx, sy, *MESSAGE_SIZE ];
     let mut blocked: Vec<Rect<i32>> = (if p_id == 0 { P0_BLOCKED } else { P1_BLOCKED }).to_vec();
     blocked.extend(BLOCKED.to_vec());
-    let m1_ok = station(p_id).collide(&unit_rect(&m1, MESSAGE_SIZE)) || (!path_collides(&blocked, offsets, p1, m1) && minimum_path(path, &m1));
-    let m2_ok = station(p_id).collide(&unit_rect(&m2, MESSAGE_SIZE)) || (!path_collides(&blocked, offsets, p1, m2) && minimum_path(path, &m2));
+    let m1_ok = !path_collides(&blocked, offsets, p1, m1) && !path_collides(&blocked, offsets, m1, p2);
+    let m2_ok = !path_collides(&blocked, offsets, p1, m2) && !path_collides(&blocked, offsets, m2, p2);
     let p1_ok = PLAY_AREA.contains(&unit_rect(&p1, MESSAGE_SIZE));
     let p2_ok = PLAY_AREA.contains(&unit_rect(&p2, MESSAGE_SIZE));
     if !p1_ok || !p2_ok {
-        if (p1.x - p2.x).abs() < (p1.y - p2.y).abs() {
-            (false, m1)
-        } else {
-            (false, m2)
-        }
+        None
     } else {
         if m1_ok && m2_ok {
             if (p1.x - p2.x).abs() < (p1.y - p2.y).abs() {
-                (true, m1)
+                Some(m1)
             } else {
-                (true, m2)
+                Some(m2)
             }
         } else if m1_ok {
-            (true, m1)
+            Some(m1)
         } else if m2_ok {
-            (true, m2)
+            Some(m2)
         } else {
-            if (p1.x - p2.x).abs() < (p1.y - p2.y).abs() {
-                (false, m1)
-            } else {
-                (false, m2)
-            }
+            None
         }
     }
 }
@@ -349,13 +341,6 @@ fn intercept_inside_bubble(u: &Unit, p: &Vector2) -> bool {
 fn draw_bubble(d: &mut RaylibDrawHandle, u: &Unit, c: &Color) {
     let b = bubble_rect(u);
     d.draw_rectangle_lines(b.x, b.y, b.w, b.h, c)
-}
-
-// new segment length >= MINIMUM_PATH && new_segment not backwards
-fn minimum_path(path: &VecDeque<Vector2>, new_p: &Vector2) -> bool {
-    path.len() == 1 || ((*new_p - path[path.len() - 1]).normalized() != (path[path.len() - 2] - path[path.len() - 1]).normalized() &&
-    (*new_p - path[path.len() - 1]).length() >= MINIMUM_PATH_SEGMENT || 
-    (*new_p - path[path.len() - 1]).normalized() == (path[path.len() - 1] - path[path.len() - 2]).normalized())
 }
 
 fn main() -> std::io::Result<()> {
@@ -677,9 +662,10 @@ fn main() -> std::io::Result<()> {
                         } else {
                             if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
                                 let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
-                                if let (true, m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id, &path) {
+                                if let Some(m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
                                     path.push_back(m);
-                                    if station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
+                                    path.push_back(eff_mouse_pos);
+                                    if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) {
                                         unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone(), blink_imbued: blink_imbued }));
                                         MouseState::WaitReleaseLButton
                                     } else {
@@ -927,24 +913,21 @@ fn main() -> std::io::Result<()> {
             MouseState::Path(ref path, blink_imbued) => {
                 let mut p = path[0] + MESSAGE_SIZE.scale_by(0.5f32);
                 let col = if blink_imbued { rcolor(0, 0, 255, 100) } else { rcolor(0, 255, 0, 100) };
-                let last_seg_col = rcolor(0, 255, 0, 50);
                 let bad_col = rcolor(255, 0, 0, 100);
-                let line_thickness = 2f32;
                 for i in 1..path.len() {
                     let next_p = path[i] + MESSAGE_SIZE.scale_by(0.5f32);
-                    d.draw_line_ex(p, next_p, line_thickness, col);
+                    d.draw_line_v(p, next_p, col);
                     p = next_p;
                 }
 
                 let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
-                match get_manhattan_turn_point(p - MESSAGE_SIZE.scale_by(0.5f32), eff_mouse_pos, p_id, &path) {
-                    (true, m) => {
-                        d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), line_thickness, col);
-                        d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, line_thickness, last_seg_col);
+                match get_manhattan_turn_point(p - MESSAGE_SIZE.scale_by(0.5f32), eff_mouse_pos, p_id) {
+                    Some(m) => {
+                        d.draw_line_v(p, m + MESSAGE_SIZE.scale_by(0.5f32), col);
+                        d.draw_line_v(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, col);
                     }
-                    (false, m) => {
-                        d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), line_thickness, bad_col);
-                        d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, line_thickness, bad_col);
+                    None => {
+                        d.draw_line_v(p, mouse_position, bad_col);
                     }
                 }
             },
