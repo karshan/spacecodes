@@ -403,7 +403,7 @@ fn main() -> std::io::Result<()> {
         (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
     ]);
     let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 100), rcolor(0x74, 0xC6, 0x9D, 100)];
-    let msg_spawn_pos = [Vector2 { x: 490f32, y: 340f32 }, Vector2 { x: 640f32, y: 490f32 }];
+    let msg_spawn_pos = [Vector2 { x: 490f32, y: 340f32 }, Vector2 { x: 340f32, y: 490f32 }];
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -878,7 +878,7 @@ fn main() -> std::io::Result<()> {
                 }
                 AreaEnum::P1Station => {
                     let w = (r.w * game_state.fuel[1])/START_FUEL;
-                    d.draw_rectangle(r.x + (r.w - w), r.y, w, r.h, area_colors[&t]);
+                    d.draw_rectangle(r.x, r.y, w, r.h, area_colors[&t]);
                     d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
                 }
                 AreaEnum::Blocked => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),

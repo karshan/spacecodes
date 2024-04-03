@@ -47,11 +47,11 @@ pub static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
         w: 50, h: 50
     }),
     (AreaEnum::P1Spawn, Rect {
-        x: 625, y: 475,
+        x: 325, y: 475,
         w: 50, h: 50
     }),
     (AreaEnum::P1Station, Rect {
-        x: 325, y: 475,
+        x: 625, y: 475,
         w: 50, h: 50
     }),
 ];
