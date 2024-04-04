@@ -41,17 +41,15 @@ pub fn collision_circle_rect(center: &Vector2, radius: f32, in_rect: &Rect<i32>)
     corner_sq_dist <= (radius * radius)
 }
 
-pub fn contains_point(r: &Rect<i32>, p: &Vector2) -> bool {
-    let px = p.x.round() as i32;
-    let py = p.y.round() as i32;
-    px >= r.x && px <= r.x + r.w &&
-        py >= r.y && py <= r.y + r.h
-}
-
 impl<T: Num + PartialOrd + Copy + AsPrimitive<f32>> Rect<T> {
     pub fn contains(self: &Rect<T>, child: &Rect<T>) -> bool {
         child.x >= self.x && child.x + child.w <= self.x + self.w &&
             child.y >= self.y && child.y + child.h <= self.y + self.h
+    }
+
+    pub fn contains_point(self: &Rect<T>, p: &Vector2) -> bool {
+        p.x >= self.x.as_() && p.x <= self.x.as_() + self.w.as_() &&
+        p.y >= self.y.as_() && p.y <= self.y.as_() + self.h.as_()
     }
 
     pub fn collide(self: &Rect<T>, other: &Rect<T>) -> bool {

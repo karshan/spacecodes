@@ -651,7 +651,7 @@ fn main() -> std::io::Result<()> {
                 not_enough_lumber = false;
                 mouse_state = match mouse_state {
                     MouseState::None => {
-                        if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                        if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
                             MouseState::Drag(mouse_position)
                         } else if start_message_path {
                             MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]))
@@ -702,7 +702,7 @@ fn main() -> std::io::Result<()> {
                         if cancel {
                             MouseState::None
                         } else {
-                            if contains_point(&PLAY_AREA, &mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
+                            if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
                                 let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
                                 if let (true, m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
                                     path.push_back(m);
@@ -734,7 +734,7 @@ fn main() -> std::io::Result<()> {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                             MouseState::None
                         } else if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
-                            if contains_point(&PLAY_AREA, &mouse_position) &&
+                            if PLAY_AREA.contains_point(&mouse_position) &&
                                     !game_state.other_units.iter().any(|other_u| intercept_inside_bubble(other_u, &mouse_position)) &&
                                     game_state.gold[p_id] >= INTERCEPT_COST {
                                 unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: mouse_position }));

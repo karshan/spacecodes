@@ -117,9 +117,9 @@ impl Shop {
     }
 
     pub fn click(self: &Self, mouse_position: Vector2) -> Option<ShopItem> {
-        if contains_point(&self.intercept_speed.rect(), &mouse_position) {
+        if self.intercept_speed.rect().contains_point(&mouse_position) {
             Some(ShopItem::Upgrade(Upgrade::InterceptSpeed))
-        } else if contains_point(&self.intercept_range.rect(), &mouse_position) {
+        } else if self.intercept_range.rect().contains_point(&mouse_position) {
             Some(ShopItem::Upgrade(Upgrade::InterceptRange))
         } else {
             None
