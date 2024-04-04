@@ -1,3 +1,5 @@
+use std::f32::EPSILON;
+
 use num_traits::{AsPrimitive, Num};
 use raylib::prelude::Vector2;
 
@@ -7,6 +9,28 @@ pub struct Rect<T: Num> {
     pub y: T,
     pub w: T,
     pub h: T,
+}
+
+// This is identitical to raylib's implementation. However raylib::check_collision_lines() returns bogus values on MacOS
+pub fn check_collision_lines(a0: &Vector2, a1: &Vector2, b0: &Vector2, b1: &Vector2) -> bool {
+    let mut collision = false;
+    let div = (b1.y - b0.y)*(a1.x - a0.x) - (b1.x - b0.x)*(a1.y - a0.y);
+
+    if div.abs() >= EPSILON {
+        collision = true;
+
+        let xi = ((b0.x - b1.x)*(a0.x*a1.y - a0.y*a1.x) - (a0.x - a1.x)*(b0.x*b1.y - b0.y*b1.x))/div;
+        let yi = ((b0.y - b1.y)*(a0.x*a1.y - a0.y*a1.x) - (a0.y - a1.y)*(b0.x*b1.y - b0.y*b1.x))/div;
+
+        if  (((a0.x - a1.x).abs() > EPSILON) && (xi < (a0.x.min(a1.x)) || (xi > (a0.x.max(a1.x))))) ||
+            (((b0.x - b1.x).abs() > EPSILON) && (xi < (b0.x.min(b1.x)) || (xi > (b0.x.max(b1.x))))) ||
+            (((a0.y - a1.y).abs() > EPSILON) && (yi < (a0.y.min(a1.y)) || (yi > (a0.y.max(a1.y))))) ||
+            (((b0.y - b1.y).abs() > EPSILON) && (yi < (b0.y.min(b1.y)) || (yi > (b0.y.max(b1.y))))) {
+                collision = false;
+        }
+    }
+
+    return collision;
 }
 
 // from raylib, copied because of potential MacOS issue
@@ -48,6 +72,12 @@ impl<T: Num + PartialOrd + Copy + AsPrimitive<f32>> Rect<T> {
     pub fn contains_point(self: &Rect<T>, p: &Vector2) -> bool {
         p.x >= self.x.as_() && p.x <= self.x.as_() + self.w.as_() &&
         p.y >= self.y.as_() && p.y <= self.y.as_() + self.h.as_()
+    }
+
+    // the contains_point checks are unnecessary, they can potentially provide short circuit benefit
+    pub fn collide_line(self: &Rect<T>, p1: &Vector2, p2: &Vector2) -> bool {
+        self.contains_point(p1) || self.contains_point(p2) ||
+            self.lines().iter().any(|l| check_collision_lines(&l[0], &l[1], p1, p2))
     }
 
     pub fn collide(self: &Rect<T>, other: &Rect<T>) -> bool {

@@ -16,6 +16,7 @@
  * [P4] move_unit() moves slower around turns
 
 #Hygiene
+ * Use bounty_enum::len() in add_bounty()
  * game_state.{my_units, other_units} -> game_state.units: [Vec<Unit>; 2]
  * Fix main::serialize_state() for game_state.upgrades and .items
  * Unit.cooldown should only exist for blinking messages

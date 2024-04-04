@@ -96,7 +96,7 @@ impl Item {
     }
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BountyEnum {
     Gold,
     Fuel,
@@ -158,6 +158,7 @@ pub struct GameState {
     pub spawn_cooldown: [i32; 2],
     pub bounties: Vec<Bounty>,
     pub last_bounty: HashMap<BountyEnum, i32>,
+    pub spawn_bounties: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -231,7 +232,8 @@ pub struct BlinkCommand {
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct InterceptCommand {
     #[serde(with = "Vector2Def")]
-    pub pos: Vector2
+    pub pos: Vector2,
+    pub vertical: bool,
 }
 
 #[serde_nested]

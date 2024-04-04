@@ -26,6 +26,7 @@ use crate::ui::*;
 struct Interception {
     start_frame: i64,
     pos: Vector2,
+    vertical: bool,
     player_id: usize,
 }
 
@@ -99,8 +100,8 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
                     game_state.spawn_cooldown[*player_id] = MSG_COOLDOWN;
                     game_state.lumber[*player_id] -= max(0, path_lumber_cost(path) - MSG_FREE_LUMBER);
                 },
-                GameCommand::Intercept(InterceptCommand { pos }) => {
-                    interceptions.push(Interception { pos: pos.clone(), start_frame: frame, player_id: i });
+                GameCommand::Intercept(InterceptCommand { pos, vertical }) => {
+                    interceptions.push(Interception { pos: pos.clone(), vertical: *vertical, start_frame: frame, player_id: i });
                     game_state.gold[i] -= INTERCEPT_COST;
                 },
                 GameCommand::BuyUpgrade(u) => {
@@ -120,7 +121,8 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
         for unit in other_units.iter_mut() {
             // Have to check unit.dead to avoid double counting interception kills (If 2 interceptions kill the same unit on the same frame)
             if !unit.dead {
-                if collision_circle_rect(&intercept.pos, INTERCEPT_RADIUS, &unit.rect()) {
+                let int_ = intercept_line(intercept);
+                if unit.rect().collide_line(&int_[0], &int_[1]) {
                     unit.dead = true;
                     game_state.intercepted[intercept.player_id] += 1;
                 }
@@ -294,21 +296,54 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> (bool, Vec
     }
 }
 
-fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
+fn bounty_counts(bounties: &Vec<Bounty>) -> Vec<(BountyEnum, usize)> {
+    let mut out = vec![];
     for b_type in [BountyEnum::Blink, BountyEnum::Fuel, BountyEnum::Gold, BountyEnum::Lumber] {
-        while game_state.bounties.iter().filter(|b| b.type_ == b_type).count() < b_type.min() as usize {
-            let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
-            while !PLAY_AREA.contains(&bounty_rect(&b)) ||
-                    GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b)) ||
-                    BLOCKED.iter().any(|r| r.collide(&bounty_rect(&b)))) ||
-                    (ship(0).center() - b).length() < 150f32 ||
-                    (ship(1).center() - b).length() < 150f32 ||
-                    game_state.bounties.iter().any(|existing_b| bounty_rect(&existing_b.pos).collide(&bounty_rect(&b))) {
-                b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
-            }
-            game_state.bounties.push(Bounty { type_: b_type, amount: b_type.amount(rng), pos: b });
+        out.push((b_type, bounties.iter().filter(|b| b.type_ == b_type).count()));
+    }
+    out
+}
+
+fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng, frame_counter: i64) {
+    if game_state.spawn_bounties {
+        let counts = bounty_counts(&game_state.bounties);
+        let existing_dist: Vec<(BountyEnum, f32)> = if game_state.bounties.is_empty() {
+                vec![(BountyEnum::Blink, 0.25), (BountyEnum::Fuel, 0.25), (BountyEnum::Lumber, 0.25), (BountyEnum::Gold, 0.25)]
+            } else {
+                counts.iter().map(|(k, v)| (*k, *v as f32/game_state.bounties.len() as f32)).collect()
+            };
+        let mut p_dist: Vec<(BountyEnum, f32)> = vec![];
+        for (k, v) in existing_dist {
+            p_dist.push((k, (1f32 - v)/3f32));
         }
-    }      
+        println!("{:?}", game_state.bounties.iter().map(|v| v.type_).collect::<Vec<_>>());
+        println!("{:?}", p_dist);
+        let r = rng.gen_range(0..100);
+        let (t_to_spawn, _) = p_dist.iter().fold((None, r), |(m_out, acc_r), (b_type, p)| {
+            match m_out {
+                Some(out) => (Some(out), acc_r),
+                None => {
+                    if acc_r < (p * 100f32).round() as i32 {
+                        (Some(*b_type), acc_r)
+                    } else {
+                        (None, acc_r - (p * 100f32).round() as i32)
+                    }
+                }
+            }
+        });
+        println!("spawning: {:?}", t_to_spawn.unwrap());
+
+        let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
+        while !PLAY_AREA.contains(&bounty_rect(&b)) ||
+                GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b)) ||
+                BLOCKED.iter().any(|r| r.collide(&bounty_rect(&b)))) ||
+                (ship(0).center() - b).length() < 150f32 ||
+                (ship(1).center() - b).length() < 150f32 ||
+                game_state.bounties.iter().any(|existing_b| bounty_rect(&existing_b.pos).collide(&bounty_rect(&b))) {
+            b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
+        }
+        game_state.bounties.push(Bounty { type_: t_to_spawn.unwrap(), amount: t_to_spawn.unwrap().amount(rng), pos: b });
+    } 
 }
 
 fn bounty_rect(b: &Vector2) -> Rect<i32> {
@@ -341,6 +376,19 @@ fn collide_bounties(game_state: &mut GameState) {
         !game_state.other_units.iter().any(|u| u.rect().collide(&bounty_rect(&b.pos))))
 }
 
+fn intercept_line(intercept: &Interception) -> [Vector2; 2] {
+    let p1: Vector2;
+    let p2: Vector2;
+    if intercept.vertical {
+        p1 = intercept.pos - Vector2::new(0f32, INTERCEPT_LENGTH/2f32);
+        p2 = intercept.pos + Vector2::new(0f32, INTERCEPT_LENGTH/2f32);
+    } else {
+        p1 = intercept.pos - Vector2::new(INTERCEPT_LENGTH/2f32, 0f32);
+        p2 = intercept.pos + Vector2::new(INTERCEPT_LENGTH/2f32, 0f32);
+    }
+    [p1, p2]
+}
+
 fn bubble_rect(u: &Unit) -> Rect<i32> {
     let cen = u.pos + u.size().scale_by(0.5f32);
     let dir = (u.path[0] - u.pos).normalized();
@@ -367,9 +415,10 @@ fn bubble_rect(u: &Unit) -> Rect<i32> {
     }
 }
 
-fn intercept_inside_bubble(u: &Unit, p: &Vector2) -> bool {
-    collision_circle_rect(p, INTERCEPT_RADIUS, &bubble_rect(u)) ||
-        collision_circle_rect(p, INTERCEPT_RADIUS, &u.rect())
+fn intercept_inside_bubble(u: &Unit, intercept: &Interception) -> bool {
+    let int_ = intercept_line(intercept);
+    bubble_rect(u).collide_line(&int_[0], &int_[1]) ||
+        u.rect().collide_line(&int_[0], &int_[1])
 }
 
 fn draw_bubble(d: &mut RaylibDrawHandle, u: &Unit, c: &Color) {
@@ -449,6 +498,7 @@ fn main() -> std::io::Result<()> {
         upgrades: [HashSet::new(), HashSet::new()],
         items: [HashMap::new(), HashMap::new()],
         bounties: vec![],
+        spawn_bounties: true,
         last_bounty: HashMap::new(),
         spawn_cooldown: [0; 2],
     };
@@ -467,7 +517,7 @@ fn main() -> std::io::Result<()> {
     enum MouseState {
         Drag(Vector2),
         Path(VecDeque<Vector2>),
-        Intercept,
+        Intercept(bool),
         WaitReleaseLButton,
         None
     }
@@ -536,6 +586,7 @@ fn main() -> std::io::Result<()> {
                             upgrades: [HashSet::new(), HashSet::new()],
                             items: [HashMap::new(), HashMap::new()],
                             bounties: vec![],
+                            spawn_bounties: true,
                             last_bounty: HashMap::from([
                                 (BountyEnum::Blink, 0),
                                 (BountyEnum::Fuel, 0),
@@ -552,6 +603,13 @@ fn main() -> std::io::Result<()> {
                 }
             },
             ClientState::Started => {
+                if game_state.bounties.len() >= 25 {
+                    game_state.spawn_bounties = false;
+                }
+                if game_state.bounties.len() < 15 {
+                    game_state.spawn_bounties = true;
+                }
+
                 let resp = socket_recv(&socket, &server[0], &mut seq_state);
                 match resp {
                     None => {}
@@ -611,7 +669,7 @@ fn main() -> std::io::Result<()> {
                                 KeyboardKey::KEY_ESCAPE => {
                                     match mouse_state {
                                         MouseState::Path(_) => { cancel = true }
-                                        MouseState::Intercept => { cancel = true }
+                                        MouseState::Intercept(_) => { cancel = true }
                                         _ => {}
                                     }
                                 },
@@ -656,8 +714,8 @@ fn main() -> std::io::Result<()> {
                         } else if start_message_path {
                             MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]))
                         } else if start_intercept {
-                            rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_CROSSHAIR);
-                            MouseState::Intercept
+                            rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_POINTING_HAND);
+                            MouseState::Intercept(false)
                         } else {
                             MouseState::None
                         }
@@ -729,23 +787,25 @@ fn main() -> std::io::Result<()> {
                             }
                         }
                     },
-                    MouseState::Intercept => {
+                    MouseState::Intercept(vertical) => {
                         if cancel {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                             MouseState::None
                         } else if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
                             if PLAY_AREA.contains_point(&mouse_position) &&
-                                    !game_state.other_units.iter().any(|other_u| intercept_inside_bubble(other_u, &mouse_position)) &&
+                                    !game_state.other_units.iter().any(|other_u| intercept_inside_bubble(other_u, &Interception { start_frame: 0, pos: mouse_position, vertical: vertical, player_id: 0 })) &&
                                     game_state.gold[p_id] >= INTERCEPT_COST {
-                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: mouse_position }));
+                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: mouse_position, vertical: vertical }));
                                 rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                                 MouseState::WaitReleaseLButton
                             } else {
                                 intercept_err = true;
-                                MouseState::Intercept
+                                MouseState::Intercept(vertical)
                             }
+                        } else if rl.is_mouse_button_pressed(MouseButton::MOUSE_RIGHT_BUTTON) {
+                            MouseState::Intercept(!vertical)
                         } else {
-                            MouseState::Intercept
+                            MouseState::Intercept(vertical)
                         }
                     },
                     MouseState::WaitReleaseLButton => {
@@ -782,7 +842,9 @@ fn main() -> std::io::Result<()> {
                         future_pkts.retain(|ps| ps.0 > frame_counter);
                         sent_pkt = vec![];
                     }
-                    add_bounty(&mut game_state, &mut rng);
+                    if (frame_counter % (3 * 60)) == 0 {
+                        add_bounty(&mut game_state, &mut rng, frame_counter);
+                    }
                     move_units(&mut game_state.my_units);
                     move_units(&mut game_state.other_units);
                     deliver_messages(&mut game_state, p_id);
@@ -964,11 +1026,12 @@ fn main() -> std::io::Result<()> {
         }
 
         for a in &interceptions {
-            d.draw_circle_v(a.pos, INTERCEPT_RADIUS, intercept_colors[a.player_id]);
+            let int_ = intercept_line(&a);
+            d.draw_line_ex(int_[0], int_[1], 3f32, intercept_colors[a.player_id]);
         }
 
         if intercept_err || not_enough_lumber {
-            d.draw_circle_v(mouse_position, INTERCEPT_RADIUS, rcolor(255, 0, 0, 100));
+            d.draw_circle_v(mouse_position, 50f32, rcolor(255, 0, 0, 100));
         }
 
         for b in &game_state.bounties {
@@ -1012,6 +1075,10 @@ fn main() -> std::io::Result<()> {
                     }
                 }
                 d.draw_text(&format!("{}", cost), cost_pos.x.round() as i32, cost_pos.y.round() as i32, 20, Color::BLACK);
+            },
+            MouseState::Intercept(vertical) => {
+                let int_ = intercept_line(&Interception { start_frame: 0, player_id: 0, pos: mouse_position, vertical: vertical });
+                d.draw_line_ex(int_[0], int_[1], 3f32, intercept_colors[p_id]);
             },
             _ => {}
         }
