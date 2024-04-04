@@ -126,10 +126,10 @@ impl BountyEnum {
 
     pub fn color(self) -> Color {
         match self {
-            BountyEnum::Blink => Color::BLUE,
-            BountyEnum::Fuel => Color::BLACK,
-            BountyEnum::Gold => Color::ORANGE,
-            BountyEnum::Lumber => Color::BROWN,
+            BountyEnum::Blink => Color::RED,
+            BountyEnum::Fuel => Color::BLUE,
+            BountyEnum::Gold => rcolor(0xF8, 0xC2, 0, 255),
+            BountyEnum::Lumber => rcolor(0xA3, 0x6C, 0x39, 255),
         }
     }
 }

@@ -897,11 +897,7 @@ fn main() -> std::io::Result<()> {
 
         for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
             let c = if u.player_id == 0 { u.p0_colors() } else { u.p1_colors() };
-            if u.blinking.is_some() {
-                d.draw_circle_v(u.pos + u.size().scale_by(0.5f32), u.size().x/2f32, c);
-            } else {
-                d.draw_rectangle_v(u.pos, u.size(), c);
-            }
+            d.draw_rectangle_v(u.pos, u.size(), c);
 
             let mx = Vector2::new(5f32, 0f32);
             let my = Vector2::new(0f32, 5f32);
@@ -914,6 +910,9 @@ fn main() -> std::io::Result<()> {
             }
             if *u.carrying_bounty.get(&BountyEnum::Lumber).unwrap_or(&0) > 0 {
                 d.draw_rectangle_v(u.pos + ms + my, ms, BountyEnum::Lumber.color());
+            }
+            if u.blinking.is_some() {
+                d.draw_rectangle_v(u.pos + ms + ms, ms, BountyEnum::Blink.color());
             }
             draw_bubble(&mut d, u, &c);
         }
@@ -928,23 +927,15 @@ fn main() -> std::io::Result<()> {
                         sel_color = rcolor(0, 0, 0, 100);
                     }
                     let u = &game_state.my_units[*u_id];
-                    if u.blinking.is_some() {
-                        let cen = u.pos + u.size().scale_by(0.5f32);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 1f32, sel_color);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 2f32, sel_color);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 3f32, sel_color);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32 + 4f32, sel_color);
-                        d.draw_circle_lines(cen.x.round() as i32, cen.y.round() as i32, u.size().x/2f32, sel_color);
-                    } else {
-                        let u_r = u.rect();
-                        let r = Rectangle {
-                            x: u_r.x as f32,
-                            y: u_r.y as f32,
-                            width: u_r.w as f32,
-                            height: u_r.h as f32,
-                        };
-                        d.draw_rectangle_lines_ex(r, 5, sel_color);
-                    }
+                    let selection_width = 4;
+                    let rect = u.rect();
+                    let r = Rectangle {
+                        x: (rect.x - selection_width) as f32,
+                        y: (rect.y - selection_width) as f32,
+                        width: (rect.w + selection_width * 2) as f32,
+                        height: (rect.h + selection_width * 2) as f32,
+                    };
+                    d.draw_rectangle_lines_ex(r, 4, sel_color);
                     if !u.path.is_empty() {
                         let mut p = u.pos + u.size().scale_by(0.5f32);
                         let col = rcolor(0, 255, 0, 100);
@@ -961,14 +952,15 @@ fn main() -> std::io::Result<()> {
                     } else {
                         sel_color = rcolor(0, 0, 0, 100);
                     }
+                    let selection_width = 4;
                     let rect = ship(p_id);
                     let r = Rectangle {
-                        x: rect.x as f32,
-                        y: rect.y as f32,
-                        width: rect.w as f32,
-                        height: rect.h as f32,
+                        x: (rect.x - selection_width) as f32,
+                        y: (rect.y - selection_width) as f32,
+                        width: (rect.w + selection_width * 2) as f32,
+                        height: (rect.h + selection_width * 2) as f32,
                     };
-                    d.draw_rectangle_lines_ex(r, 5, sel_color);
+                    d.draw_rectangle_lines_ex(r, 4, sel_color);
                 },
                 Selection::Station => {
                     let rect = station(p_id);
@@ -1002,8 +994,7 @@ fn main() -> std::io::Result<()> {
         }
 
         for b in &game_state.bounties {
-            // bounty_icons.render(&mut d, b.type_, b.pos);
-            d.draw_rectangle_v(b.pos, BOUNTY_SIZE, b.type_.color());
+            bounty_icons.render(&mut d, b.type_, b.pos);
         }
 
         let path_width = 20f32;
