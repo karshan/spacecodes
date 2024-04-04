@@ -9,20 +9,10 @@ pub struct Rect<T: Num> {
     pub h: T,
 }
 
-// TODO use From/Into traits for this
-pub fn rect_into_f32(r: &Rect<i32>) -> Rect<f32> {
-    Rect {
-        x: r.x as f32,
-        y: r.y as f32,
-        w: r.w as f32,
-        h: r.h as f32,
-    }
-}
-
 // from raylib, copied because of potential MacOS issue
 pub fn collision_circle_rect(center: &Vector2, radius: f32, in_rect: &Rect<i32>) -> bool
 {
-    let rect: Rect<f32> = rect_into_f32(in_rect);
+    let rect: Rect<f32> = in_rect.into_f32();
     let rect_cen_x: f32 = rect.x + rect.w/2.0f32;
     let rect_cen_y: f32 = rect.y + rect.h/2.0f32;
 
@@ -42,6 +32,14 @@ pub fn collision_circle_rect(center: &Vector2, radius: f32, in_rect: &Rect<i32>)
 }
 
 impl<T: Num + PartialOrd + Copy + AsPrimitive<f32>> Rect<T> {
+    pub fn into_f32(self: &Rect<T>) -> Rect<f32> {
+        Rect {
+            x: self.x.as_(),
+            y: self.y.as_(),
+            w: self.w.as_(),
+            h: self.h.as_(),
+        }
+    }
     pub fn contains(self: &Rect<T>, child: &Rect<T>) -> bool {
         child.x >= self.x && child.x + child.w <= self.x + self.w &&
             child.y >= self.y && child.y + child.h <= self.y + self.h
