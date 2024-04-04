@@ -48,12 +48,6 @@ pub fn contains_point(r: &Rect<i32>, p: &Vector2) -> bool {
         py >= r.y && py <= r.y + r.h
 }
 
-
-
-pub fn rect_center(r: &Rect<i32>) -> Vector2 {
-    Vector2::new(r.x as f32, r.y as f32) + Vector2::new(r.w as f32, r.h as f32).scale_by(0.5f32)
-}
-
 impl<T: Num + PartialOrd + Copy + AsPrimitive<f32>> Rect<T> {
     pub fn contains(self: &Rect<T>, child: &Rect<T>) -> bool {
         child.x >= self.x && child.x + child.w <= self.x + self.w &&
@@ -70,6 +64,10 @@ impl<T: Num + PartialOrd + Copy + AsPrimitive<f32>> Rect<T> {
         let ll = other.x;
         let rr = ll + other.w;
         !(b < tt || t > bb || l > rr || r < ll) 
+    }
+
+    pub fn center(self: &Rect<T>) -> Vector2 {
+        Vector2::new(self.x.as_(), self.y.as_()) + Vector2::new(self.w.as_(), self.h.as_()).scale_by(0.5f32)
     }
 
     pub fn lines(self: &Rect<T>) -> [[Vector2; 2]; 4] {

@@ -301,8 +301,8 @@ fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
             while !PLAY_AREA.contains(&bounty_rect(&b)) ||
                     GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b)) ||
                     BLOCKED.iter().any(|r| r.collide(&bounty_rect(&b)))) ||
-                    (rect_center(ship(0)) - b).length() < 150f32 ||
-                    (rect_center(ship(1)) - b).length() < 150f32 ||
+                    (ship(0).center() - b).length() < 150f32 ||
+                    (ship(1).center() - b).length() < 150f32 ||
                     game_state.bounties.iter().any(|existing_b| bounty_rect(&existing_b.pos).collide(&bounty_rect(&b))) {
                 b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
             }
@@ -992,7 +992,7 @@ fn main() -> std::io::Result<()> {
                     p = next_p;
                 }
 
-                let cost_pos = rect_center(ship(p_id)) - Vector2::new(5f32, 10f32);
+                let cost_pos = ship(p_id).center() - Vector2::new(5f32, 10f32);
                 let mut cost = max(0, path_lumber_cost(path) - MSG_FREE_LUMBER);
                 let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
                 match get_manhattan_turn_point(p - MESSAGE_SIZE.scale_by(0.5f32), eff_mouse_pos, p_id) {
