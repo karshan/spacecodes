@@ -451,7 +451,7 @@ fn main() -> std::io::Result<()> {
         (AreaEnum::P1Station, Color::from_hex("1B4332").unwrap()),
         (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
     ]);
-    let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 100), rcolor(0x74, 0xC6, 0x9D, 100)];
+    let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 255), rcolor(0x74, 0xC6, 0x9D, 255)];
     let msg_spawn_pos = [Vector2 { x: 490f32, y: 340f32 }, Vector2 { x: 340f32, y: 490f32 }];
 
     let args: Vec<String> = env::args().collect();
