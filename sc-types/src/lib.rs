@@ -4,7 +4,6 @@ extern crate serde_derive;
 use std::{collections::{HashMap, HashSet, VecDeque}, hash::Hash};
 use constants::{BLINK_COOLDOWN, MESSAGE_SIZE, MSG_FUEL};
 use raylib::prelude::{Vector2, Color, rcolor};
-use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 
 pub mod shapes;
@@ -115,7 +114,7 @@ impl BountyEnum {
         }
     }
 
-    pub fn amount(self, rng: &mut ChaCha20Rng) -> i32 {
+    pub fn amount(self, _rng: &mut ChaCha20Rng) -> i32 {
         match self {
             BountyEnum::Gold => 50,
             BountyEnum::Fuel => MSG_FUEL * 3,

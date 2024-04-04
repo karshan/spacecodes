@@ -294,7 +294,7 @@ fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> (bool, Vec
     }
 }
 
-fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng, frame_counter: i64) {
+fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
     for b_type in [BountyEnum::Blink, BountyEnum::Fuel, BountyEnum::Gold, BountyEnum::Lumber] {
         while game_state.bounties.iter().filter(|b| b.type_ == b_type).count() < b_type.min() as usize {
             let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
@@ -456,13 +456,11 @@ fn main() -> std::io::Result<()> {
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i64 = 0;
     // TODO All this netcode related stuff should be abstracted into a single type
-    let mut sent_frame = 0;
-    let mut frame_state = FrameState::Neither;
+    let mut next_send_frame = 0;
     let mut unsent_pkt = vec![];
     let mut unacked_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut future_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut sent_pkt = vec![];
-    let mut recvd_pkt = vec![];
     let mut last_rcvd_pkt = -1;
     // ------------------------
     let mut interceptions = vec![];
@@ -475,7 +473,7 @@ fn main() -> std::io::Result<()> {
     }
     let mut mouse_state: MouseState = MouseState::None;
     let mut ended = None;
-    let mut packets_ps = WindowAvg::new();
+    let mut game_ps = WindowAvg::new();
     let mut shop_open = false;
     let mut rng: ChaCha20Rng = ChaCha20Rng::from_seed([0; 32]);
     let shop = Shop::new(&mut rl, &thread).unwrap();
@@ -516,7 +514,7 @@ fn main() -> std::io::Result<()> {
                     None => ClientState::Waiting,
                     Some(ServerEnum::Start { rng_seed }) => {
                         frame_counter = 0;
-                        sent_frame = 0;
+                        next_send_frame = 0;
                         unsent_pkt = vec![];
                         unacked_pkts = VecDeque::new();
                         future_pkts = VecDeque::new();
@@ -524,7 +522,6 @@ fn main() -> std::io::Result<()> {
                         ended = None;
                         interceptions = vec![];
                         mouse_state = MouseState::None;
-                        frame_state = FrameState::Neither;
                         shop_open = false;
                         rng = ChaCha20Rng::from_seed(rng_seed);
                         game_state = GameState {
@@ -555,35 +552,16 @@ fn main() -> std::io::Result<()> {
                 }
             },
             ClientState::Started => {
-                // frame_state can never be Both here. It is reset to neither if it is Both
-                if frame_counter % 2 == 0 && frame_state != FrameState::Received {
-                    let resp = socket_recv(&socket, &server[0], &mut seq_state);
-                    match resp {
-                        None => {
-                            match future_pkts.iter().find(|ps| ps.0 == frame_counter) {
-                                Some(p) => {
-                                    recvd_pkt = p.1.clone();
-                                    future_pkts.retain(|ps| ps.0 > frame_counter);
-                                    frame_state.recvd();
-                                },
-                                None => {}
-                            };
-                        },
-                        Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack }) => {
-                            if frame != frame_counter {
-                                println!("out of order packet {}", frame - frame_counter);
-                            }
-                            frame_state.recvd();
-                            recvd_pkt = updates.iter().chain(future_pkts.iter())
-                                .find(|ps| ps.0 == frame_counter).expect("recvd packet didnt contain frame we were looking for").1.clone();
-                            future_pkts.append(&mut updates.clone());
-                            future_pkts.retain(|ps| ps.0 > frame_counter);
-                            unacked_pkts.retain(|ps| ps.0 > frame_ack);
-                            last_rcvd_pkt = frame;
-                        },
-                        Some(_) => {
-                            panic!("Expected UpdateOtherTarget")
-                        }
+                let resp = socket_recv(&socket, &server[0], &mut seq_state);
+                match resp {
+                    None => {}
+                    Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack }) => {
+                        future_pkts.append(&mut updates.clone());
+                        unacked_pkts.retain(|ps| ps.0 > frame_ack);
+                        last_rcvd_pkt = frame;
+                    },
+                    Some(_) => {
+                        panic!("Expected UpdateOtherTarget")
                     }
                 }
 
@@ -779,27 +757,32 @@ fn main() -> std::io::Result<()> {
                     }
                 };
 
-                if sent_frame <= frame_counter && (frame_counter % 2 == 0) {
-                    unacked_pkts.push_front((frame_counter, unsent_pkt.clone()));
+                if next_send_frame <= frame_counter && (frame_counter % 2 == 0) {
+                    unacked_pkts.push_front((frame_counter + 1, unsent_pkt.clone()));
                     socket_send(&socket, &server[0], &ClientPkt::Target { 
                         seq: seq_state.send_seq,
                         ack: seq_state.send_ack,
                         updates: unacked_pkts.clone(),
-                        frame: frame_counter,
+                        frame: frame_counter + 1,
                         frame_ack: last_rcvd_pkt,
                     })?;
                     seq_state.send();
-                    frame_state.sent();
                     sent_pkt = unsent_pkt;
                     unsent_pkt = vec![];
-                    sent_frame += 2;
+                    next_send_frame += 2;
                 }
 
-                if frame_state == FrameState::Both || (frame_counter % 2 == 1) {
-                    apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
-                    add_bounty(&mut game_state, &mut rng, frame_counter);
-                    recvd_pkt = vec![];
-                    sent_pkt = vec![];
+                if (next_send_frame > frame_counter) && future_pkts.iter().any(|ps| ps.0 == frame_counter) || (frame_counter % 2 == 0) {
+                    game_ps.sample();
+                    if frame_counter % 2 == 0 {
+                        apply_updates(&mut game_state, [&vec![], &vec![]], p_id, &mut interceptions, frame_counter);
+                    } else {
+                        let recvd_pkt = future_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
+                        apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
+                        future_pkts.retain(|ps| ps.0 > frame_counter);
+                        sent_pkt = vec![];
+                    }
+                    add_bounty(&mut game_state, &mut rng);
                     move_units(&mut game_state.my_units);
                     move_units(&mut game_state.other_units);
                     deliver_messages(&mut game_state, p_id);
@@ -815,11 +798,6 @@ fn main() -> std::io::Result<()> {
                         })?;
                         seq_state.send();
                     }
-                }
-
-                if frame_state == FrameState::Both {
-                    packets_ps.sample();
-                    frame_state = FrameState::Neither;
                 }
 
                 if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
@@ -883,7 +861,6 @@ fn main() -> std::io::Result<()> {
                     d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
                 }
                 AreaEnum::Blocked => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),
-                _ => d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]),
             }
         }
 
@@ -1040,8 +1017,7 @@ fn main() -> std::io::Result<()> {
         }
 
         d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
-        d.draw_text(&fps.to_string(), 20, 40, 20, Color::BLACK);
-        d.draw_text(&packets_ps.peek().round().to_string(), 60, 40, 20, Color::BLACK);
+        d.draw_text(&format!("fps/g: {}/{}", fps, game_ps.peek().round()), 20, 40, 20, Color::BLACK);
         if let Some(end_state) = ended {
             let end_str = match end_state {
                 Some(winner) => if winner == p_id { "YOU WON" } else { "YOU LOST" },
