@@ -191,9 +191,9 @@ pub struct Unit {
 pub fn unit_rect(pos: &Vector2, size: &Vector2) -> Rect<i32> {
     // TODO we want to round here the same way opengl does when drawing to the screen.
     Rect { 
-        x: pos.x.round() as i32,
+        x: pos.x as i32,
         y: pos.y.round() as i32, 
-        w: size.x.round() as i32,
+        w: size.x as i32,
         h: size.y.round() as i32
     }
 }

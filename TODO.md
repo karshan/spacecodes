@@ -13,7 +13,6 @@
 
 #Bugs
  * [P3] Recover when packets from both clients are dropped on the same frame
- * [P4] message and blinking message should be the same shape (collision still assumes rectangle)
  * [P4] move_unit() moves slower around turns
 
 #Hygiene

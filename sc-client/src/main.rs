@@ -425,6 +425,7 @@ fn main() -> std::io::Result<()> {
     let (mut rl, thread) = raylib::init()
         .size(PLAY_AREA.w, PLAY_AREA.h + 200)
         .title("Space Codes")
+        .vsync()
         .build();
     rl.set_target_fps(frame_rate);
     let mut shader = rl.load_shader(&thread, Some("sc-client/src/vertex.vs"), Some("sc-client/src/frag.fs")).unwrap();
