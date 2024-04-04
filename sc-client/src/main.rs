@@ -316,8 +316,6 @@ fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng, frame_counter: 
         for (k, v) in existing_dist {
             p_dist.push((k, (1f32 - v)/3f32));
         }
-        println!("{:?}", game_state.bounties.iter().map(|v| v.type_).collect::<Vec<_>>());
-        println!("{:?}", p_dist);
         let r = rng.gen_range(0..100);
         let (t_to_spawn, _) = p_dist.iter().fold((None, r), |(m_out, acc_r), (b_type, p)| {
             match m_out {
@@ -331,7 +329,6 @@ fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng, frame_counter: 
                 }
             }
         });
-        println!("spawning: {:?}", t_to_spawn.unwrap());
 
         let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
         while !PLAY_AREA.contains(&bounty_rect(&b)) ||
