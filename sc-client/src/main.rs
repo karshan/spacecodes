@@ -523,7 +523,7 @@ fn main() -> std::io::Result<()> {
     }
     let mut mouse_state: MouseState = MouseState::None;
     let mut ended = None;
-    let mut game_ps = WindowAvg::new();
+    let mut game_ps = TimeWindowAvg::new();
     let mut shop_open = false;
     let mut rng: ChaCha20Rng = ChaCha20Rng::from_seed([0; 32]);
     let shop = Shop::new(&mut rl, &thread).unwrap();
@@ -535,6 +535,7 @@ fn main() -> std::io::Result<()> {
     let mut intercept_err = false;
     let mut not_enough_lumber = false;
     let mut waiting = None;
+    let mut waiting_avg = WindowAvg::new();
     while !rl.window_should_close() {
         let mouse_position = rl.get_mouse_position();
         let fps = rl.get_fps();
@@ -837,7 +838,6 @@ fn main() -> std::io::Result<()> {
                     if waiting.is_none() {
                         waiting = Some(Instant::now())
                     }
-                    println!("waiting {:?}", waiting.unwrap().elapsed());
                 }
 
                 if (next_send_frame > frame_counter) && future_pkts.iter().any(|ps| ps.0 == frame_counter) || (frame_counter % 2 == 0) {
@@ -845,6 +845,10 @@ fn main() -> std::io::Result<()> {
                     if frame_counter % 2 == 0 {
                         apply_updates(&mut game_state, [&vec![], &vec![]], p_id, &mut interceptions, frame_counter);
                     } else {
+                        match waiting {
+                            Some(wait) => waiting_avg.sample(wait.elapsed().as_secs_f64()),
+                            None => waiting_avg.sample(0f64)
+                        };
                         waiting = None;
                         let recvd_pkt = future_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
                         apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
@@ -1093,7 +1097,8 @@ fn main() -> std::io::Result<()> {
         }
 
         d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
-        d.draw_text(&format!("fps/g: {}/{}", fps, game_ps.peek().round()), 20, 40, 20, Color::BLACK);
+        d.draw_text(&format!("fps/g: {}/{}", fps, game_ps.get_hz().round()), 20, 40, 20, Color::BLACK);
+        d.draw_text(&format!("w: {}", (waiting_avg.avg * 1000f64).round()), 20, 60, 20, Color::BLACK);
         if let Some(end_state) = ended {
             let end_str = match end_state {
                 Some(winner) => if winner == p_id { "YOU WON" } else { "YOU LOST" },

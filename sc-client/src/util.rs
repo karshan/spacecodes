@@ -43,17 +43,16 @@ pub fn socket_send(socket: &UdpSocket, addr: &SocketAddr, pkt: &ClientPkt) -> Re
     }
 }
 
-static WINDOW_SIZE: usize = 30;
-pub struct WindowAvg {
+pub struct TimeWindowAvg {
     history: [f64; 30],
     last: Instant,
     index: usize,
     pub avg: f64,
 }
 
-impl WindowAvg {
-    pub fn new() -> WindowAvg {
-        WindowAvg {
+impl TimeWindowAvg {
+    pub fn new() -> TimeWindowAvg {
+        TimeWindowAvg {
             history:[0f64; 30],
             last: Instant::now(),
             index: 0,
@@ -61,7 +60,7 @@ impl WindowAvg {
         }
     }
 
-    pub fn peek(self: &Self) -> f64 {
+    pub fn get_hz(self: &Self) -> f64 {
         if self.avg.is_zero() {
             0f64
         } else {
@@ -73,10 +72,34 @@ impl WindowAvg {
         let now = Instant::now();
         let dt = now.duration_since(self.last);
         self.last = now;
-        self.index = (self.index + 1) % WINDOW_SIZE;
+        self.index = (self.index + 1) % 30;
         self.avg -= self.history[self.index];
-        self.history[self.index] = (dt.as_millis() as f64)/(WINDOW_SIZE as f64);
+        self.history[self.index] = (dt.as_millis() as f64)/(30 as f64);
         self.avg += self.history[self.index];
-        self.peek()
+        self.get_hz()
+    }
+}
+
+pub struct WindowAvg {
+    history: [f64; 30],
+    index: usize,
+    pub avg: f64,
+}
+
+impl WindowAvg {
+    pub fn new() -> WindowAvg {
+        WindowAvg {
+            history:[0f64; 30],
+            index: 0,
+            avg: 0f64,
+        }
+    }
+
+    pub fn sample(self: &mut Self, v: f64) -> f64 {
+        self.index = (self.index + 1) % 30;
+        self.avg -= self.history[self.index];
+        self.history[self.index] = v/(30 as f64);
+        self.avg += self.history[self.index];
+        self.avg
     }
 }
