@@ -543,7 +543,7 @@ fn main() -> std::io::Result<()> {
     let mut intercept_err = false;
     let mut not_enough_lumber = false;
     let mut waiting = Instant::now();
-    let mut waiting_avg = WindowAvg::new(3);
+    let mut waiting_avg = WindowAvg::new(frame_rate as usize * 10);
 
     let start_time = Instant::now();
     while !rl.window_should_close() {
@@ -899,10 +899,10 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                
-                if m_new_frame_delay.is_none() && waiting_avg.avg > 20f64/1000f64 && waiting_avg.avg < 300f64/1000f64 {
-                    let new_delay = (waiting_avg.avg * (fps as f64)).ceil() as u32;
-                    if new_delay < 20 && new_delay > my_frame_delay as u32 {
+                let waiting_one_pct_max = f64::min(waiting_avg.one_percent_max(), 300f64/1000f64);
+                if m_new_frame_delay.is_none() && waiting_one_pct_max > 20f64/1000f64 {
+                    let new_delay = (waiting_one_pct_max * (frame_rate as f64)).ceil() as u32;
+                    if new_delay > my_frame_delay as u32 {
                         m_new_frame_delay = Some(new_delay as u8);
                     }
                 }
@@ -1145,7 +1145,7 @@ fn main() -> std::io::Result<()> {
 
         d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
         d.draw_text(&format!("fps/g: {}/{}", fps, game_ps.get_hz().round()), 20, 40, 20, Color::BLACK);
-        d.draw_text(&format!("w/fd: {}/{}", (waiting_avg.avg * 1000f64).round(), my_frame_delay), 20, 60, 20, Color::BLACK);
+        d.draw_text(&format!("w/1%/fd: {}/{}/{}", (waiting_avg.avg * 1000f64).round(), (waiting_avg.one_percent_max() * 1000f64).round(), my_frame_delay), 20, 60, 20, Color::BLACK);
         if let Some(end_state) = ended {
             let end_str = match end_state {
                 Some(winner) => if winner == p_id { "YOU WON" } else { "YOU LOST" },

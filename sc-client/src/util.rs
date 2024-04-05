@@ -81,22 +81,25 @@ impl TimeWindowAvg {
 }
 
 pub struct WindowAvg {
-    history: [f64; 30],
+    history: Vec<f64>,
     index: usize,
     size: usize,
     pub avg: f64,
+    pub max: f64,
 }
 
 impl WindowAvg {
     pub fn new(size: usize) -> WindowAvg {
-        if size >= 30 {
-            panic!("WindowAvg size must be < 30");
+        let mut hist = vec![];
+        for _i in 0..size {
+            hist.push(0f64);
         }
         WindowAvg {
-            history:[0f64; 30],
+            history: hist,
             index: 0,
             size: size,
             avg: 0f64,
+            max: 0f64
         }
     }
 
@@ -105,6 +108,18 @@ impl WindowAvg {
         self.avg -= self.history[self.index];
         self.history[self.index] = v/(self.size as f64);
         self.avg += self.history[self.index];
+        self.max = *self.history[0..self.size].iter().max_by(|x, y| x.total_cmp(*y)).unwrap();
         self.avg
+    }
+
+    pub fn one_percent_max(self: &Self) -> f64 {
+        let mut tmp: Vec<f64> = self.history.iter().cloned().map(|v| v * self.size as f64).collect();
+        tmp.sort_by(|x, y| y.partial_cmp(x).unwrap());
+        let t2: Vec<f64> = tmp.iter().cloned().take(self.size/100).collect();
+        if t2.is_empty() {
+            -1f64
+        } else {
+            t2.iter().fold(0f64, |acc, e| acc + *e)/(t2.len() as f64)
+        }
     }
 }
