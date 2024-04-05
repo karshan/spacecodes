@@ -638,6 +638,11 @@ fn main() -> std::io::Result<()> {
                     match rl.get_key_pressed() {
                         Some(k) => {
                             match k {
+                                KeyboardKey::KEY_ONE => {
+                                    game_state.selection = HashSet::new();
+                                    game_state.selection.insert(Selection::Ship);
+                                    game_state.sub_selection = Some(SubSelection::Ship);
+                                },
                                 KeyboardKey::KEY_TAB => {
                                     if let Some(subsel) = game_state.sub_selection {
                                         let mut choices = vec![];

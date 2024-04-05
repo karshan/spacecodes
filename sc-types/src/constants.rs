@@ -13,7 +13,7 @@ pub enum AreaEnum {
 pub static START_FUEL: i32 = 1000 * 60;
 pub static FUEL_LOSS: i32 = 5; // per frame
 pub static PASSIVE_GOLD_GAIN: f32 = 0f32/60f32;
-pub static STARTING_GOLD: f32 = 100f32;
+pub static STARTING_GOLD: f32 = 300f32;
 pub static STARTING_LUMBER: i32 = 20;
 pub static MSG_COOLDOWN: i32 = 10 * 60;
 pub static MSG_FREE_LUMBER: i32 = 3;
