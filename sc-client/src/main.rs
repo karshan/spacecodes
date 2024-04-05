@@ -3,6 +3,7 @@ use std::cmp::{min, max};
 use std::f32::EPSILON;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
+use std::time::Instant;
 use pathfinding::path_collides;
 use rand_core::SeedableRng;
 use raylib::prelude::*;
@@ -304,7 +305,7 @@ fn bounty_counts(bounties: &Vec<Bounty>) -> Vec<(BountyEnum, usize)> {
     out
 }
 
-fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng, frame_counter: i64) {
+fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
     if game_state.spawn_bounties {
         let counts = bounty_counts(&game_state.bounties);
         let existing_dist: Vec<(BountyEnum, f32)> = if game_state.bounties.is_empty() {
@@ -533,6 +534,7 @@ fn main() -> std::io::Result<()> {
     rl.set_exit_key(None);
     let mut intercept_err = false;
     let mut not_enough_lumber = false;
+    let mut waiting = None;
     while !rl.window_should_close() {
         let mouse_position = rl.get_mouse_position();
         let fps = rl.get_fps();
@@ -831,18 +833,26 @@ fn main() -> std::io::Result<()> {
                     next_send_frame += 2;
                 }
 
+                if frame_counter % 2 == 1 && (next_send_frame > frame_counter) && !future_pkts.iter().any(|ps| ps.0 == frame_counter) {
+                    if waiting.is_none() {
+                        waiting = Some(Instant::now())
+                    }
+                    println!("waiting {:?}", waiting.unwrap().elapsed());
+                }
+
                 if (next_send_frame > frame_counter) && future_pkts.iter().any(|ps| ps.0 == frame_counter) || (frame_counter % 2 == 0) {
                     game_ps.sample();
                     if frame_counter % 2 == 0 {
                         apply_updates(&mut game_state, [&vec![], &vec![]], p_id, &mut interceptions, frame_counter);
                     } else {
+                        waiting = None;
                         let recvd_pkt = future_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
                         apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
                         future_pkts.retain(|ps| ps.0 > frame_counter);
                         sent_pkt = vec![];
                     }
                     if (frame_counter % (3 * 60)) == 0 {
-                        add_bounty(&mut game_state, &mut rng, frame_counter);
+                        add_bounty(&mut game_state, &mut rng);
                     }
                     move_units(&mut game_state.my_units);
                     move_units(&mut game_state.other_units);
