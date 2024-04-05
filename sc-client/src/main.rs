@@ -519,11 +519,7 @@ fn main() -> std::io::Result<()> {
     let mut sent_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut last_rcvd_pkt = -1;
     let mut my_frame_delay = 1u8;
-    enum NewFrameDelay {
-        None(i64),
-        Some(u8)
-    }
-    let mut m_new_frame_delay = NewFrameDelay::None(0);
+    let mut m_new_frame_delay = None;
     // ------------------------
     let mut interceptions = vec![];
     enum MouseState {
@@ -546,7 +542,7 @@ fn main() -> std::io::Result<()> {
     rl.set_exit_key(None);
     let mut intercept_err = false;
     let mut not_enough_lumber = false;
-    let mut waiting = None;
+    let mut waiting = Instant::now();
     let mut waiting_avg = WindowAvg::new();
 
     let start_time = Instant::now();
@@ -586,7 +582,8 @@ fn main() -> std::io::Result<()> {
                         future_pkts = VecDeque::new();
                         sent_pkts = VecDeque::new();
                         my_frame_delay = 1;
-                        m_new_frame_delay = NewFrameDelay::None(0);
+                        m_new_frame_delay = None;
+                        waiting = Instant::now();
                         for i in 0..my_frame_delay {
                             future_pkts.push_front((i as i64, vec![]));
                             sent_pkts.push_front((i as i64, vec![]));                            
@@ -637,8 +634,11 @@ fn main() -> std::io::Result<()> {
                 match resp {
                     None => {}
                     Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay }) => {
+                        waiting_avg.sample(waiting.elapsed().as_secs_f64());
+                        waiting = Instant::now();
+
                         if frame_delay > my_frame_delay {
-                            m_new_frame_delay = NewFrameDelay::Some(frame_delay);
+                            m_new_frame_delay = Some(frame_delay);
                         }
                         future_pkts.append(&mut updates.clone());
                         unacked_pkts.retain(|ps| ps.0 > frame_ack);
@@ -849,12 +849,12 @@ fn main() -> std::io::Result<()> {
                 };
 
                 if next_send_frame <= frame_counter {
-                    if let NewFrameDelay::Some(new_frame_delay) = m_new_frame_delay {
+                    if let Some(new_frame_delay) = m_new_frame_delay {
                         for i in my_frame_delay..new_frame_delay {
                             unacked_pkts.push_front((frame_counter + i as i64, vec![]));
                             sent_pkts.push_front((frame_counter + i as i64, vec![]));
                         }
-                        m_new_frame_delay = NewFrameDelay::None(frame_counter);
+                        m_new_frame_delay = None;
                         my_frame_delay = new_frame_delay;
                     }
                     unacked_pkts.push_front((frame_counter + my_frame_delay as i64, unsent_pkt.clone()));
@@ -872,24 +872,8 @@ fn main() -> std::io::Result<()> {
                     next_send_frame += 1;
                 }
 
-                if (next_send_frame > frame_counter) && !future_pkts.iter().any(|ps| ps.0 == frame_counter) {
-                    match waiting {
-                        None => waiting = Some(Instant::now()),
-                        Some(wait) => {
-                            if wait.elapsed().as_secs_f64() > 1f64 {
-                                waiting_avg.sample(wait.elapsed().as_secs_f64());
-                            }
-                        }
-                    }
-                }
-
                 if (next_send_frame > frame_counter) && future_pkts.iter().any(|ps| ps.0 == frame_counter) {
                     game_ps.sample();
-                    match waiting {
-                        Some(wait) => waiting_avg.sample(wait.elapsed().as_secs_f64()),
-                        None => waiting_avg.sample(0f64)
-                    };
-                    waiting = None;
                     let recvd_pkt = future_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
                     let sent_pkt = sent_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
                     apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
@@ -915,20 +899,14 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                match m_new_frame_delay {
-                    NewFrameDelay::None(last_frame_delay_update) => {
-                        // We need to rate limit frame_delay updates because waiting_avg does not include frame_delay (latency = frame_delay * fps + waiting_avg)
-                        // This means when we update frame_delay, latency = old_frame_delay * fps + waiting_avg. For a few frames.
-                        // For now we wait 3 seconds before updating frame_delay again, but this should be done more elegantly.
-                        if (frame_counter - last_frame_delay_update) > 3 * fps as i64 && waiting.is_none() && waiting_avg.avg > 20f64/1000f64 && waiting_avg.avg < 300f64/1000f64 {
-                            let new_delay = my_frame_delay as u32 + (waiting_avg.avg * (fps as f64)).ceil() as u32;
-                            if new_delay < 20 {
-                                m_new_frame_delay = NewFrameDelay::Some(new_delay as u8);
-                            }
-                        }
+                
+                if m_new_frame_delay.is_none() && waiting_avg.avg > 20f64/1000f64 && waiting_avg.avg < 300f64/1000f64 {
+                    let new_delay = (waiting_avg.avg * (fps as f64)).ceil() as u32;
+                    if new_delay < 20 && new_delay > my_frame_delay as u32 {
+                        m_new_frame_delay = Some(new_delay as u8);
                     }
-                    NewFrameDelay::Some(_) => {}
                 }
+            
                 if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
                     socket_send(&socket, &server[0], &ClientPkt::Ended { 
                         seq: seq_state.send_seq,
