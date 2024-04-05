@@ -632,6 +632,9 @@ fn main() -> std::io::Result<()> {
                 match resp {
                     None => {}
                     Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay }) => {
+                        if frame_delay > my_frame_delay {
+                            m_new_frame_delay = Some(frame_delay);
+                        }
                         future_pkts.append(&mut updates.clone());
                         unacked_pkts.retain(|ps| ps.0 > frame_ack);
                         last_rcvd_pkt = frame;
@@ -907,7 +910,7 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                if waiting_avg.avg > 20f64/1000f64 && waiting_avg.avg < 300f64/1000f64 {
+                if m_new_frame_delay.is_none() && waiting_avg.avg > 20f64/1000f64 && waiting_avg.avg < 300f64/1000f64 {
                     let new_delay = my_frame_delay as u32 + (waiting_avg.avg * (fps as f64)).ceil() as u32;
                     if new_delay < 20 {
                         m_new_frame_delay = Some(new_delay as u8);
