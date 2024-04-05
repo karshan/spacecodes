@@ -16,6 +16,7 @@
  * [P4] move_unit() moves slower around turns
 
 #Hygiene
+ * Add probability sampling util functions and use them in add_bounty
  * Use bounty_enum::len() in add_bounty()
  * game_state.{my_units, other_units} -> game_state.units: [Vec<Unit>; 2]
  * Fix main::serialize_state() for game_state.upgrades and .items
@@ -28,6 +29,7 @@
  * Remove unit.dead, use a to_kill: Vec<unit_id> whenever units can die and update them immediately
 
 #Performance
+ * profiling
  * No/minumum heap use
  * Packed bools and structs
  * maximise cache utilization, iterate through units just once per frame
