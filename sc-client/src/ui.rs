@@ -60,6 +60,7 @@ impl MessageSpellIcons {
     }
 
     pub fn render(self: &Self, d: &mut RaylibDrawHandle, blink_cd: f32) {
+        d.draw_text("Z", self.blink.pos.x.round() as i32, self.blink.pos.y.round() as i32, 1, Color::BLACK);
         self.blink.render(d, Color::WHITE);
         d.draw_rectangle_v(self.blink.pos + Vector2::new(0f32, self.blink.tex.height as f32), Vector2::new(blink_cd * self.blink.tex.height as f32, 10f32), Color::BLACK);
     }
@@ -74,13 +75,13 @@ impl ShipSpellIcons {
         let start_pos = Vector2::new(PLAY_AREA.w as f32/2f32 - 25f32, PLAY_AREA.h as f32 + 75f32) - gap;
         ShipSpellIcons([
             (Icon {
-                tex: intercept_tex,
-                pos: start_pos
-            }, 'I'),
-            (Icon {
                 tex: rl.load_texture(&thread, "sc-client/assets/message.png").unwrap(),
+                pos: start_pos
+            }, 'Q'),
+            (Icon {
+                tex: intercept_tex,
                 pos: start_pos + gap
-            }, 'M'),
+            }, 'W'),
         ])
     }
 

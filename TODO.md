@@ -1,17 +1,28 @@
 #Features
- * Show both invalid paths when path turns red
- * Consider adding "undo last path point"
- * [P2] server sets constants (GAME_MAP, INTERCEPT_COST, PASSIVE_GOLD_GAIN etc.)
- * [P3] Show text error message if trying to intercept without enough gold/too close to enemy unit
- * [P3] draw intercept circle when targeting?
- * [P3] Message death animation
- * [P4] Visual feedback on spell icons when pressing hotkey
+ * [P1] latency based frame_delay
+ * [P1] Easily playable online
+    * Binary should check version with server on launch
+    * Enter lobby code to join game
+    * Ready -> 3,2,1
+    * Host binary somewhere
+ * [P1] Path's drawn as rectangle not thick lines
+ * [P1] Map visual overhaul
+ * [P1] Passive lumber 1/5sec when below 5
+ * [P2] Shiny blink messages
+ * [P2] Message death animation (stop and fade out)
+ * [P2] Show text error message if trying to intercept without enough gold/too close to enemy unit
+ * [P3] Grapple (short range power shot to grab buffs)
+ * [P3] Sound
+ * [P3] Better intercept cursor ?
+ * [P4] Ensure bounties don't spawn one sided (location)
+ * [P4] Experiment flags for new features like grapple.
  * [P4] Allow clicking spell icons
 
 #Ideas
  * crossing rivers increases fuel gain for message/speed etc.
  * can intercept while drawing path
  * can stash incomplete/complete paths for later
+ * Consider adding "undo last path point"
 
 #Bugs
  * [P3] Recover when packets from both clients are dropped on the same frame

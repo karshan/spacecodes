@@ -102,4 +102,9 @@ impl<T: Num + PartialOrd + Copy + AsPrimitive<f32>> Rect<T> {
         [Vector2 { x: self.x.as_(), y: (self.y + self.h).as_() }, Vector2 { x: (self.x + self.w).as_(), y: (self.y + self.h).as_() }], // bottom
         [Vector2 { x: (self.x + self.w).as_(), y: self.y.as_() }, Vector2 { x: (self.x + self.w).as_(), y: (self.y + self.h).as_() }]] // right
     }
+
+    pub fn size(self: &Rect<T>) -> Vector2 {
+        let rf32 = self.into_f32();
+        Vector2::new(rf32.w, rf32.h)
+    }
 }

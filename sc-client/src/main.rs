@@ -470,7 +470,7 @@ fn main() -> std::io::Result<()> {
         panic!("unable to resolve server?")
     }
 
-    set_trace_log(TraceLogLevel::LOG_ERROR);
+    // set_trace_log(TraceLogLevel::LOG_ERROR);
     let (mut rl, thread) = raylib::init()
         .size(PLAY_AREA.w, PLAY_AREA.h + 200)
         .title("Space Codes")
@@ -478,7 +478,11 @@ fn main() -> std::io::Result<()> {
         .build();
     rl.set_target_fps(frame_rate);
     let mut shader = rl.load_shader(&thread, Some("sc-client/src/vertex.vs"), Some("sc-client/src/frag.fs")).unwrap();
-    let u_mouse = shader.get_shader_location("u_mouse");
+    let u_time = shader.get_shader_location("u_time");
+    let u_resolution = shader.get_shader_location("u_resolution");
+    let u_blink_band = shader.get_shader_location("u_blink_band");
+    let u_top_left = shader.get_shader_location("u_top_left");
+
 
     let message_spell_icons = MessageSpellIcons::new(&mut rl, &thread);
     let ship_spell_icons = ShipSpellIcons::new(&mut rl, &thread);
@@ -536,6 +540,8 @@ fn main() -> std::io::Result<()> {
     let mut not_enough_lumber = false;
     let mut waiting = None;
     let mut waiting_avg = WindowAvg::new();
+
+    let start_time = Instant::now();
     while !rl.window_should_close() {
         let mouse_position = rl.get_mouse_position();
         let fps = rl.get_fps();
@@ -945,18 +951,25 @@ fn main() -> std::io::Result<()> {
             }
         }
 
-        shader.set_shader_value(u_mouse, mouse_position);
-        let mut shd = d.begin_shader_mode(&shader);
         for r in &BLOCKED {
-            shd.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&AreaEnum::Blocked])
+            d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&AreaEnum::Blocked])
         }
-        drop(shd);
 
         d.draw_rectangle_lines(RIVER.x, RIVER.y, RIVER.w, RIVER.h, Color::BLUE);
 
         for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
             let c = if u.player_id == 0 { u.p0_colors() } else { u.p1_colors() };
-            d.draw_rectangle_v(u.pos, u.size(), c);
+            if u.blinking.is_some() {
+                shader.set_shader_value(u_time, start_time.elapsed().as_secs_f32());
+                shader.set_shader_value(u_resolution, PLAY_AREA.size() + Vector2::new(0f32, 200f32));
+                shader.set_shader_value(u_blink_band, Vector3::new(1f32, 1f32, 1f32));
+                shader.set_shader_value(u_top_left, u.pos);
+                let mut shd = d.begin_shader_mode(&shader);
+                shd.draw_rectangle_v(u.pos, u.size(), c);
+                drop(shd);
+            } else {
+                d.draw_rectangle_v(u.pos, u.size(), c);
+            }
 
             let mx = Vector2::new(5f32, 0f32);
             let my = Vector2::new(0f32, 5f32);
