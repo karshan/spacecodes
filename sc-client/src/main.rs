@@ -518,7 +518,7 @@ fn main() -> std::io::Result<()> {
     let mut sent_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut last_rcvd_pkt = -1;
     let mut my_frame_delay = 1u8;
-    let mut my_frame_delay_changed = false;
+    let mut m_new_frame_delay = None;
     // ------------------------
     let mut interceptions = vec![];
     enum MouseState {
@@ -581,7 +581,7 @@ fn main() -> std::io::Result<()> {
                         future_pkts = VecDeque::new();
                         sent_pkts = VecDeque::new();
                         my_frame_delay = 1;
-                        my_frame_delay_changed = false;
+                        m_new_frame_delay = None;
                         for i in 0..my_frame_delay {
                             future_pkts.push_front((i as i64, vec![]));
                             sent_pkts.push_front((i as i64, vec![]));                            
@@ -841,10 +841,13 @@ fn main() -> std::io::Result<()> {
                 };
 
                 if next_send_frame <= frame_counter {
-                    if my_frame_delay_changed {
-                        unacked_pkts.push_front((frame_counter + 1 as i64, vec![]));
-                        sent_pkts.push_front((frame_counter + 1, vec![]));
-                        my_frame_delay_changed = false;
+                    if let Some(new_frame_delay) = m_new_frame_delay {
+                        for i in my_frame_delay..new_frame_delay {
+                            unacked_pkts.push_front((frame_counter + i as i64, vec![]));
+                            sent_pkts.push_front((frame_counter + i as i64, vec![]));
+                        }
+                        m_new_frame_delay = None;
+                        my_frame_delay = new_frame_delay;
                     }
                     unacked_pkts.push_front((frame_counter + my_frame_delay as i64, unsent_pkt.clone()));
                     socket_send(&socket, &server[0], &ClientPkt::Target { 
@@ -904,9 +907,11 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                if waiting_avg.avg > 20f64/1000f64 {
-                    my_frame_delay = 2;
-                    my_frame_delay_changed = true;
+                if waiting_avg.avg > 20f64/1000f64 && waiting_avg.avg < 300f64/1000f64 {
+                    let new_delay = my_frame_delay as u32 + (waiting_avg.avg * (fps as f64)).ceil() as u32;
+                    if new_delay < 20 {
+                        m_new_frame_delay = Some(new_delay as u8);
+                    }
                 }
 
                 if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
