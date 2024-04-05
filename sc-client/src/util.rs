@@ -37,7 +37,7 @@ pub fn socket_recv(socket: &UdpSocket, expected_addr: &SocketAddr, seq_state: &m
 }
 
 pub fn socket_send(socket: &UdpSocket, addr: &SocketAddr, pkt: &ClientPkt) -> Result<usize, std::io::Error> {
-    match  rmp_serde::encode::to_vec(pkt) {
+    match rmp_serde::encode::to_vec(pkt) {
         Ok(buf) => socket.send_to(&buf, addr),
         Err(e) => panic!("{:?}", e),
     }

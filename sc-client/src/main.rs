@@ -510,7 +510,7 @@ fn main() -> std::io::Result<()> {
     let mut unsent_pkt = vec![];
     let mut unacked_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut future_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
-    let mut sent_pkt = vec![];
+    let mut sent_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut last_rcvd_pkt = -1;
     // ------------------------
     let mut interceptions = vec![];
@@ -829,7 +829,7 @@ fn main() -> std::io::Result<()> {
                         frame_ack: last_rcvd_pkt,
                     })?;
                     seq_state.send();
-                    sent_pkt = unsent_pkt;
+                    sent_pkts.push_front((frame_counter + 1, unsent_pkt.clone()));
                     unsent_pkt = vec![];
                     next_send_frame += 2;
                 }
@@ -851,9 +851,10 @@ fn main() -> std::io::Result<()> {
                         };
                         waiting = None;
                         let recvd_pkt = future_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
+                        let sent_pkt = sent_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
                         apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
                         future_pkts.retain(|ps| ps.0 > frame_counter);
-                        sent_pkt = vec![];
+                        sent_pkts.retain(|ps| ps.0 > frame_counter);
                     }
                     if (frame_counter % (3 * 60)) == 0 {
                         add_bounty(&mut game_state, &mut rng);
