@@ -470,7 +470,7 @@ fn main() -> std::io::Result<()> {
         panic!("unable to resolve server?")
     }
 
-    // set_trace_log(TraceLogLevel::LOG_ERROR);
+    set_trace_log(TraceLogLevel::LOG_ERROR);
     let (mut rl, thread) = raylib::init()
         .size(PLAY_AREA.w, PLAY_AREA.h + 200)
         .title("Space Codes")
@@ -479,6 +479,7 @@ fn main() -> std::io::Result<()> {
     rl.set_target_fps(frame_rate);
     let mut blink_shader = rl.load_shader(&thread, Some("sc-client/src/vertex.vs"), Some("sc-client/src/shiny_blink.fs")).unwrap();
     let mut noise_shader = rl.load_shader(&thread, Some("sc-client/src/vertex.vs"), Some("sc-client/src/noise.fs")).unwrap();
+    let noise_u_time = noise_shader.get_shader_location("u_time");
     let u_time = blink_shader.get_shader_location("u_time");
     let u_resolution = blink_shader.get_shader_location("u_resolution");
     let u_blink_band = blink_shader.get_shader_location("u_blink_band");
@@ -518,7 +519,11 @@ fn main() -> std::io::Result<()> {
     let mut sent_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut last_rcvd_pkt = -1;
     let mut my_frame_delay = 1u8;
-    let mut m_new_frame_delay = None;
+    enum NewFrameDelay {
+        None(i64),
+        Some(u8)
+    }
+    let mut m_new_frame_delay = NewFrameDelay::None(0);
     // ------------------------
     let mut interceptions = vec![];
     enum MouseState {
@@ -581,7 +586,7 @@ fn main() -> std::io::Result<()> {
                         future_pkts = VecDeque::new();
                         sent_pkts = VecDeque::new();
                         my_frame_delay = 1;
-                        m_new_frame_delay = None;
+                        m_new_frame_delay = NewFrameDelay::None(0);
                         for i in 0..my_frame_delay {
                             future_pkts.push_front((i as i64, vec![]));
                             sent_pkts.push_front((i as i64, vec![]));                            
@@ -633,7 +638,7 @@ fn main() -> std::io::Result<()> {
                     None => {}
                     Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay }) => {
                         if frame_delay > my_frame_delay {
-                            m_new_frame_delay = Some(frame_delay);
+                            m_new_frame_delay = NewFrameDelay::Some(frame_delay);
                         }
                         future_pkts.append(&mut updates.clone());
                         unacked_pkts.retain(|ps| ps.0 > frame_ack);
@@ -844,12 +849,12 @@ fn main() -> std::io::Result<()> {
                 };
 
                 if next_send_frame <= frame_counter {
-                    if let Some(new_frame_delay) = m_new_frame_delay {
+                    if let NewFrameDelay::Some(new_frame_delay) = m_new_frame_delay {
                         for i in my_frame_delay..new_frame_delay {
                             unacked_pkts.push_front((frame_counter + i as i64, vec![]));
                             sent_pkts.push_front((frame_counter + i as i64, vec![]));
                         }
-                        m_new_frame_delay = None;
+                        m_new_frame_delay = NewFrameDelay::None(frame_counter);
                         my_frame_delay = new_frame_delay;
                     }
                     unacked_pkts.push_front((frame_counter + my_frame_delay as i64, unsent_pkt.clone()));
@@ -910,13 +915,20 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                if m_new_frame_delay.is_none() && waiting_avg.avg > 20f64/1000f64 && waiting_avg.avg < 300f64/1000f64 {
-                    let new_delay = my_frame_delay as u32 + (waiting_avg.avg * (fps as f64)).ceil() as u32;
-                    if new_delay < 20 {
-                        m_new_frame_delay = Some(new_delay as u8);
+                match m_new_frame_delay {
+                    NewFrameDelay::None(last_frame_delay_update) => {
+                        // We need to rate limit frame_delay updates because waiting_avg does not include frame_delay (latency = frame_delay * fps + waiting_avg)
+                        // This means when we update frame_delay, latency = old_frame_delay * fps + waiting_avg. For a few frames.
+                        // For now we wait 3 seconds before updating frame_delay again, but this should be done more elegantly.
+                        if (frame_counter - last_frame_delay_update) > 3 * fps as i64 && waiting.is_none() && waiting_avg.avg > 20f64/1000f64 && waiting_avg.avg < 300f64/1000f64 {
+                            let new_delay = my_frame_delay as u32 + (waiting_avg.avg * (fps as f64)).ceil() as u32;
+                            if new_delay < 20 {
+                                m_new_frame_delay = NewFrameDelay::Some(new_delay as u8);
+                            }
+                        }
                     }
+                    NewFrameDelay::Some(_) => {}
                 }
-
                 if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
                     socket_send(&socket, &server[0], &ClientPkt::Ended { 
                         seq: seq_state.send_seq,
@@ -978,7 +990,7 @@ fn main() -> std::io::Result<()> {
                     d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
                 }
                 AreaEnum::Blocked => {
-                    noise_shader.set_shader_value(noise_shader.get_shader_location("u_time"), start_time.elapsed().as_secs_f32());
+                    noise_shader.set_shader_value(noise_u_time, start_time.elapsed().as_secs_f32());
                     let mut shd = d.begin_shader_mode(&noise_shader);
                     shd.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]);
                     drop(shd);
@@ -986,7 +998,7 @@ fn main() -> std::io::Result<()> {
             }
         }
 
-        noise_shader.set_shader_value(noise_shader.get_shader_location("u_time"), start_time.elapsed().as_secs_f32());
+        noise_shader.set_shader_value(noise_u_time, start_time.elapsed().as_secs_f32());
         let mut shd = d.begin_shader_mode(&noise_shader);
         for r in &BLOCKED {
             shd.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&AreaEnum::Blocked])
