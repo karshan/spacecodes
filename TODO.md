@@ -8,7 +8,6 @@
  * [P1] Path's drawn as rectangle not thick lines
  * [P1] Map visual overhaul
  * [P1] Passive lumber 1/5sec when below 5
- * [P2] Shiny blink messages
  * [P2] Message death animation (stop and fade out)
  * [P2] Show text error message if trying to intercept without enough gold/too close to enemy unit
  * [P3] Grapple (short range power shot to grab buffs)

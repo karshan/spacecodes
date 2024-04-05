@@ -449,7 +449,7 @@ fn main() -> std::io::Result<()> {
         (AreaEnum::P0Station, Color::from_hex("0077B6").unwrap()),
         (AreaEnum::P1Spawn, rcolor(0x1b, 0x43, 0x32, 100)),
         (AreaEnum::P1Station, Color::from_hex("1B4332").unwrap()),
-        (AreaEnum::Blocked, Color::from_hex("D8F3DC").unwrap()),
+        (AreaEnum::Blocked, Color::from_hex("99a3a3").unwrap()), // 4d908e 3d348b 33415c 
     ]);
     let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 255), rcolor(0x74, 0xC6, 0x9D, 255)];
     let msg_spawn_pos = [Vector2 { x: 490f32, y: 340f32 }, Vector2 { x: 340f32, y: 490f32 }];
@@ -477,11 +477,12 @@ fn main() -> std::io::Result<()> {
         .vsync()
         .build();
     rl.set_target_fps(frame_rate);
-    let mut shader = rl.load_shader(&thread, Some("sc-client/src/vertex.vs"), Some("sc-client/src/frag.fs")).unwrap();
-    let u_time = shader.get_shader_location("u_time");
-    let u_resolution = shader.get_shader_location("u_resolution");
-    let u_blink_band = shader.get_shader_location("u_blink_band");
-    let u_top_left = shader.get_shader_location("u_top_left");
+    let mut blink_shader = rl.load_shader(&thread, Some("sc-client/src/vertex.vs"), Some("sc-client/src/shiny_blink.fs")).unwrap();
+    let mut noise_shader = rl.load_shader(&thread, Some("sc-client/src/vertex.vs"), Some("sc-client/src/noise.fs")).unwrap();
+    let u_time = blink_shader.get_shader_location("u_time");
+    let u_resolution = blink_shader.get_shader_location("u_resolution");
+    let u_blink_band = blink_shader.get_shader_location("u_blink_band");
+    let u_top_left = blink_shader.get_shader_location("u_top_left");
 
 
     let message_spell_icons = MessageSpellIcons::new(&mut rl, &thread);
@@ -947,24 +948,32 @@ fn main() -> std::io::Result<()> {
                     d.draw_rectangle(r.x, r.y, w, r.h, area_colors[&t]);
                     d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
                 }
-                AreaEnum::Blocked => d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]),
+                AreaEnum::Blocked => {
+                    noise_shader.set_shader_value(noise_shader.get_shader_location("u_time"), start_time.elapsed().as_secs_f32());
+                    let mut shd = d.begin_shader_mode(&noise_shader);
+                    shd.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]);
+                    drop(shd);
+                }
             }
         }
 
+        noise_shader.set_shader_value(noise_shader.get_shader_location("u_time"), start_time.elapsed().as_secs_f32());
+        let mut shd = d.begin_shader_mode(&noise_shader);
         for r in &BLOCKED {
-            d.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&AreaEnum::Blocked])
+            shd.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&AreaEnum::Blocked])
         }
+        drop(shd);
 
         d.draw_rectangle_lines(RIVER.x, RIVER.y, RIVER.w, RIVER.h, Color::BLUE);
 
         for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
             let c = if u.player_id == 0 { u.p0_colors() } else { u.p1_colors() };
             if u.blinking.is_some() {
-                shader.set_shader_value(u_time, start_time.elapsed().as_secs_f32());
-                shader.set_shader_value(u_resolution, PLAY_AREA.size() + Vector2::new(0f32, 200f32));
-                shader.set_shader_value(u_blink_band, Vector3::new(1f32, 1f32, 1f32));
-                shader.set_shader_value(u_top_left, u.pos);
-                let mut shd = d.begin_shader_mode(&shader);
+                blink_shader.set_shader_value(u_time, start_time.elapsed().as_secs_f32());
+                blink_shader.set_shader_value(u_resolution, PLAY_AREA.size() + Vector2::new(0f32, 200f32));
+                blink_shader.set_shader_value(u_blink_band, Vector3::new(1f32, 1f32, 1f32));
+                blink_shader.set_shader_value(u_top_left, u.pos);
+                let mut shd = d.begin_shader_mode(&blink_shader);
                 shd.draw_rectangle_v(u.pos, u.size(), c);
                 drop(shd);
             } else {
