@@ -543,7 +543,7 @@ fn main() -> std::io::Result<()> {
     let mut intercept_err = false;
     let mut not_enough_lumber = false;
     let mut waiting = Instant::now();
-    let mut waiting_avg = WindowAvg::new();
+    let mut waiting_avg = WindowAvg::new(3);
 
     let start_time = Instant::now();
     while !rl.window_should_close() {

@@ -83,22 +83,27 @@ impl TimeWindowAvg {
 pub struct WindowAvg {
     history: [f64; 30],
     index: usize,
+    size: usize,
     pub avg: f64,
 }
 
 impl WindowAvg {
-    pub fn new() -> WindowAvg {
+    pub fn new(size: usize) -> WindowAvg {
+        if size >= 30 {
+            panic!("WindowAvg size must be < 30");
+        }
         WindowAvg {
             history:[0f64; 30],
             index: 0,
+            size: size,
             avg: 0f64,
         }
     }
 
     pub fn sample(self: &mut Self, v: f64) -> f64 {
-        self.index = (self.index + 1) % 30;
+        self.index = (self.index + 1) % self.size;
         self.avg -= self.history[self.index];
-        self.history[self.index] = v/(30 as f64);
+        self.history[self.index] = v/(self.size as f64);
         self.avg += self.history[self.index];
         self.avg
     }
