@@ -658,12 +658,12 @@ fn main() -> std::io::Result<()> {
                                         game_state.sub_selection = Some(choices[(choices.iter().enumerate().find(|(_, c)| **c == subsel).unwrap().0 + 1) % choices.len()]);
                                     }
                                 },
-                                KeyboardKey::KEY_M => {
+                                KeyboardKey::KEY_Q => {
                                     if game_state.sub_selection == Some(SubSelection::Ship) && game_state.spawn_cooldown[p_id] <= 0 {
                                         start_message_path = true
                                     }
                                 },
-                                KeyboardKey::KEY_I => { 
+                                KeyboardKey::KEY_W => {
                                     if game_state.sub_selection == Some(SubSelection::Ship) {
                                         if game_state.gold[p_id] < INTERCEPT_COST {
                                             intercept_err = true;
@@ -680,7 +680,7 @@ fn main() -> std::io::Result<()> {
                                         _ => {}
                                     }
                                 },
-                                KeyboardKey::KEY_SPACE => {
+                                KeyboardKey::KEY_Z => {
                                     for (u_id, u) in selected_units(&game_state) {
                                         if u.blink_cooldown <= 0 && u.blinking.is_some() {
                                             unsent_pkt.push(GameCommand::Blink(BlinkCommand { u_id }));

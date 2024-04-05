@@ -1,4 +1,6 @@
 #Features
+ * Show both invalid paths when path turns red
+ * Consider adding "undo last path point"
  * [P2] server sets constants (GAME_MAP, INTERCEPT_COST, PASSIVE_GOLD_GAIN etc.)
  * [P3] Show text error message if trying to intercept without enough gold/too close to enemy unit
  * [P3] draw intercept circle when targeting?
