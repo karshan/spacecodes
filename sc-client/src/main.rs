@@ -517,6 +517,8 @@ fn main() -> std::io::Result<()> {
     let mut future_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut sent_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut last_rcvd_pkt = -1;
+    let mut my_frame_delay = 1u8;
+    let mut my_frame_delay_changed = false;
     // ------------------------
     let mut interceptions = vec![];
     enum MouseState {
@@ -577,6 +579,13 @@ fn main() -> std::io::Result<()> {
                         unsent_pkt = vec![];
                         unacked_pkts = VecDeque::new();
                         future_pkts = VecDeque::new();
+                        sent_pkts = VecDeque::new();
+                        my_frame_delay = 1;
+                        my_frame_delay_changed = false;
+                        for i in 0..my_frame_delay {
+                            future_pkts.push_front((i as i64, vec![]));
+                            sent_pkts.push_front((i as i64, vec![]));                            
+                        }
                         last_rcvd_pkt = -1;
                         ended = None;
                         interceptions = vec![];
@@ -622,7 +631,7 @@ fn main() -> std::io::Result<()> {
                 let resp = socket_recv(&socket, &server[0], &mut seq_state);
                 match resp {
                     None => {}
-                    Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack }) => {
+                    Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay }) => {
                         future_pkts.append(&mut updates.clone());
                         unacked_pkts.retain(|ps| ps.0 > frame_ack);
                         last_rcvd_pkt = frame;
@@ -831,43 +840,50 @@ fn main() -> std::io::Result<()> {
                     }
                 };
 
-                if next_send_frame <= frame_counter && (frame_counter % 2 == 0) {
-                    unacked_pkts.push_front((frame_counter + 1, unsent_pkt.clone()));
+                if next_send_frame <= frame_counter {
+                    if my_frame_delay_changed {
+                        unacked_pkts.push_front((frame_counter + 1 as i64, vec![]));
+                        sent_pkts.push_front((frame_counter + 1, vec![]));
+                        my_frame_delay_changed = false;
+                    }
+                    unacked_pkts.push_front((frame_counter + my_frame_delay as i64, unsent_pkt.clone()));
                     socket_send(&socket, &server[0], &ClientPkt::Target { 
                         seq: seq_state.send_seq,
                         ack: seq_state.send_ack,
                         updates: unacked_pkts.clone(),
-                        frame: frame_counter + 1,
+                        frame: frame_counter + my_frame_delay as i64,
                         frame_ack: last_rcvd_pkt,
+                        frame_delay: my_frame_delay
                     })?;
                     seq_state.send();
-                    sent_pkts.push_front((frame_counter + 1, unsent_pkt.clone()));
+                    sent_pkts.push_front((frame_counter + my_frame_delay as i64, unsent_pkt.clone()));
                     unsent_pkt = vec![];
-                    next_send_frame += 2;
+                    next_send_frame += 1;
                 }
 
-                if frame_counter % 2 == 1 && (next_send_frame > frame_counter) && !future_pkts.iter().any(|ps| ps.0 == frame_counter) {
-                    if waiting.is_none() {
-                        waiting = Some(Instant::now())
+                if (next_send_frame > frame_counter) && !future_pkts.iter().any(|ps| ps.0 == frame_counter) {
+                    match waiting {
+                        None => waiting = Some(Instant::now()),
+                        Some(wait) => {
+                            if wait.elapsed().as_secs_f64() > 1f64 {
+                                waiting_avg.sample(wait.elapsed().as_secs_f64());
+                            }
+                        }
                     }
                 }
 
-                if (next_send_frame > frame_counter) && future_pkts.iter().any(|ps| ps.0 == frame_counter) || (frame_counter % 2 == 0) {
+                if (next_send_frame > frame_counter) && future_pkts.iter().any(|ps| ps.0 == frame_counter) {
                     game_ps.sample();
-                    if frame_counter % 2 == 0 {
-                        apply_updates(&mut game_state, [&vec![], &vec![]], p_id, &mut interceptions, frame_counter);
-                    } else {
-                        match waiting {
-                            Some(wait) => waiting_avg.sample(wait.elapsed().as_secs_f64()),
-                            None => waiting_avg.sample(0f64)
-                        };
-                        waiting = None;
-                        let recvd_pkt = future_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
-                        let sent_pkt = sent_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
-                        apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
-                        future_pkts.retain(|ps| ps.0 > frame_counter);
-                        sent_pkts.retain(|ps| ps.0 > frame_counter);
-                    }
+                    match waiting {
+                        Some(wait) => waiting_avg.sample(wait.elapsed().as_secs_f64()),
+                        None => waiting_avg.sample(0f64)
+                    };
+                    waiting = None;
+                    let recvd_pkt = future_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
+                    let sent_pkt = sent_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
+                    apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
+                    future_pkts.retain(|ps| ps.0 > frame_counter);
+                    sent_pkts.retain(|ps| ps.0 > frame_counter);
                     if (frame_counter % (3 * 60)) == 0 {
                         add_bounty(&mut game_state, &mut rng);
                     }
@@ -886,6 +902,11 @@ fn main() -> std::io::Result<()> {
                         })?;
                         seq_state.send();
                     }
+                }
+
+                if waiting_avg.avg > 20f64/1000f64 {
+                    my_frame_delay = 2;
+                    my_frame_delay_changed = true;
                 }
 
                 if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
@@ -1126,7 +1147,7 @@ fn main() -> std::io::Result<()> {
 
         d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
         d.draw_text(&format!("fps/g: {}/{}", fps, game_ps.get_hz().round()), 20, 40, 20, Color::BLACK);
-        d.draw_text(&format!("w: {}", (waiting_avg.avg * 1000f64).round()), 20, 60, 20, Color::BLACK);
+        d.draw_text(&format!("w/fd: {}/{}", (waiting_avg.avg * 1000f64).round(), my_frame_delay), 20, 60, 20, Color::BLACK);
         if let Some(end_state) = ended {
             let end_str = match end_state {
                 Some(winner) => if winner == p_id { "YOU WON" } else { "YOU LOST" },

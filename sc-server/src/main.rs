@@ -58,7 +58,7 @@ fn main() -> io::Result<()> {
                         Err(e) => panic!("{:?}", e),
                     }
                 },
-                ClientPkt::Target { seq, ack, updates, frame, frame_ack } => {
+                ClientPkt::Target { seq, ack, updates, frame, frame_ack, frame_delay } => {
                     let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
                     r_seq_state.recv(seq, ack).map(|e| { println!("recvd target err: {}", e); });
                     match state {
@@ -69,7 +69,7 @@ fn main() -> io::Result<()> {
                                         seq: s_seq_state.send_seq,
                                         ack: s_seq_state.send_ack,
                                         server_time: instant.elapsed().as_secs_f64(),
-                                        msg: ServerEnum::UpdateOtherTarget { updates: updates.clone(), frame, frame_ack },
+                                        msg: ServerEnum::UpdateOtherTarget { updates: updates.clone(), frame, frame_ack, frame_delay },
                                     };
                                     match  rmp_serde::encode::to_vec(&server_pkt) {
                                         Ok(buf) => {
