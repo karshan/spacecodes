@@ -224,12 +224,12 @@ impl Unit {
     }
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct BlinkCommand {
     pub u_id: usize,
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InterceptCommand {
     #[serde(with = "Vector2Def")]
     pub pos: Vector2,
@@ -237,14 +237,14 @@ pub struct InterceptCommand {
 }
 
 #[serde_nested]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SpawnMsgCommand {
     pub player_id: usize,
     #[serde_nested(sub = "Vector2", serde(with = "Vector2Def"))]
     pub path: VecDeque<Vector2>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum GameCommand {
     Blink(BlinkCommand),
     Spawn(SpawnMsgCommand),

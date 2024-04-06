@@ -514,10 +514,9 @@ fn main() -> std::io::Result<()> {
     // TODO All this netcode related stuff should be abstracted into a single type
     let mut next_send_frame = 0;
     let mut unsent_pkt = vec![];
-    let mut unacked_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
-    let mut acked_non_empty_pkts: Vec<i64> = vec![];
-    let mut future_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
-    let mut sent_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
+    let mut unacked_pkts: FrameMap<Vec<GameCommand>> = FrameMap::new();
+    let mut future_pkts: FrameMap<Vec<GameCommand>> = FrameMap::new();
+    let mut sent_pkts: FrameMap<Vec<GameCommand>> = FrameMap::new();
     let mut last_rcvd_pkt = -1;
     let mut my_frame_delay = 1u8;
     let mut m_new_frame_delay = None;
@@ -579,16 +578,15 @@ fn main() -> std::io::Result<()> {
                         frame_counter = 0;
                         next_send_frame = 0;
                         unsent_pkt = vec![];
-                        unacked_pkts = VecDeque::new();
-                        acked_non_empty_pkts = vec![];
-                        future_pkts = VecDeque::new();
-                        sent_pkts = VecDeque::new();
+                        unacked_pkts = FrameMap::new();
+                        future_pkts = FrameMap::new();
+                        sent_pkts = FrameMap::new();
                         my_frame_delay = 1;
                         m_new_frame_delay = None;
                         waiting = Instant::now();
                         for i in 0..my_frame_delay {
-                            future_pkts.push_front((i as i64, vec![]));
-                            sent_pkts.push_front((i as i64, vec![]));                            
+                            future_pkts.push(i as i64, vec![]);
+                            sent_pkts.push(i as i64, vec![]);                            
                         }
                         last_rcvd_pkt = -1;
                         ended = None;
@@ -638,9 +636,7 @@ fn main() -> std::io::Result<()> {
                     Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay }) => {
                         waiting_avg.sample(waiting.elapsed().as_secs_f64());
                         waiting = Instant::now();
-                        future_pkts.append(&mut updates.clone());
-                        let mut new_nonempty_acked_pkts = unacked_pkts.iter().cloned().filter(|(f, ps)| *f <= frame_ack && *f >= frame_counter && !ps.is_empty()).map(|(f, _)| f).collect::<Vec<_>>();
-                        acked_non_empty_pkts.append(&mut new_nonempty_acked_pkts);
+                        future_pkts.merge(&updates.clone());
                         unacked_pkts.retain(|ps| ps.0 > frame_ack);
                         last_rcvd_pkt = frame;
                     },
@@ -849,37 +845,38 @@ fn main() -> std::io::Result<()> {
                 };
 
                 if next_send_frame <= frame_counter {
+                    let mut dont_send = false;
                     if let Some(new_frame_delay) = m_new_frame_delay {
                         if new_frame_delay > my_frame_delay {
                             for i in my_frame_delay..new_frame_delay {
-                                unacked_pkts.push_front((frame_counter + i as i64, vec![]));
-                                sent_pkts.push_front((frame_counter + i as i64, vec![]));
+                                unacked_pkts.push(frame_counter + i as i64, vec![]);
+                                sent_pkts.push(frame_counter + i as i64, vec![]);
                             }
                             m_new_frame_delay = None;
                             my_frame_delay = new_frame_delay;
                         } else {
-                            if unacked_pkts.iter().any(|(f, ps)| *f > frame_counter + new_frame_delay as i64 && !ps.is_empty()) ||
-                                acked_non_empty_pkts.iter().any(|f| *f > frame_counter + new_frame_delay as i64) {
-                                // can't do it
+                            if sent_pkts.iter().any(|(f, _)| *f >= frame_counter + new_frame_delay as i64) {
+                                dont_send = true;
                             } else {
                                 m_new_frame_delay = None;
                                 my_frame_delay = new_frame_delay;
-                                acked_non_empty_pkts.retain(|f| *f >= frame_counter);
                             }
                         }
                     }
-                    unacked_pkts.push_front((frame_counter + my_frame_delay as i64, unsent_pkt.clone()));
-                    socket_send(&socket, &server[0], &ClientPkt::Target { 
-                        seq: seq_state.send_seq,
-                        ack: seq_state.send_ack,
-                        updates: unacked_pkts.clone(),
-                        frame: frame_counter + my_frame_delay as i64,
-                        frame_ack: last_rcvd_pkt,
-                        frame_delay: my_frame_delay
-                    })?;
-                    seq_state.send();
-                    sent_pkts.push_front((frame_counter + my_frame_delay as i64, unsent_pkt.clone()));
-                    unsent_pkt = vec![];
+                    if !dont_send {
+                        unacked_pkts.push(frame_counter + my_frame_delay as i64, unsent_pkt.clone());
+                        socket_send(&socket, &server[0], &ClientPkt::Target { 
+                            seq: seq_state.send_seq,
+                            ack: seq_state.send_ack,
+                            updates: unacked_pkts.cloned_vecdeque(),
+                            frame: frame_counter + my_frame_delay as i64,
+                            frame_ack: last_rcvd_pkt,
+                            frame_delay: my_frame_delay
+                        })?;
+                        seq_state.send();
+                        sent_pkts.push(frame_counter + my_frame_delay as i64, unsent_pkt.clone());
+                        unsent_pkt = vec![];
+                    }
                     next_send_frame += 1;
                 }
 

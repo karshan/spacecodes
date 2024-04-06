@@ -1,6 +1,6 @@
 extern crate rmp_serde as rmps;
 
-use std::{collections::HashMap, hash::Hash, net::{SocketAddr, UdpSocket}, ops::AddAssign, time::Instant};
+use std::{collections::{HashMap, VecDeque}, hash::Hash, net::{SocketAddr, UdpSocket}, ops::AddAssign, slice::Iter, time::Instant};
 use num_traits::Zero;
 use sc_types::{ClientPkt, SeqState, ServerEnum, ServerPkt};
 use std::io;
@@ -40,6 +40,51 @@ pub fn socket_send(socket: &UdpSocket, addr: &SocketAddr, pkt: &ClientPkt) -> Re
     match rmp_serde::encode::to_vec(pkt) {
         Ok(buf) => socket.send_to(&buf, addr),
         Err(e) => panic!("{:?}", e),
+    }
+}
+
+pub struct FrameMap<T>(Vec<(i64, T)>);
+
+impl<T: Clone + PartialEq> FrameMap<T> {
+    pub fn new() -> FrameMap<T> {
+        FrameMap(vec![])
+    }
+
+    pub fn iter<'a>(self: &'a Self) -> Iter<'a, (i64, T)> {
+        self.0.iter()
+    }
+
+    pub fn retain<F>(self: &mut Self, f: F)
+    where
+        F: FnMut(&(i64, T)) -> bool,
+    {
+        self.0.retain(f)
+    }
+
+    pub fn push(self: &mut Self, k: i64, v: T) {
+        if self.0.iter().any(|(f, _)| *f == k) {
+            panic!("trying to overwrite frame in FrameMap");
+        }
+        self.0.push((k, v));
+    }
+
+    pub fn merge(self: &mut Self, other: &VecDeque<(i64, T)>) {
+        for (k, v) in other {
+            match self.0.iter().find(|(f, _)| *f == *k) {
+                Some((_, existing_v)) => {
+                    if existing_v != v {
+                        panic!("trying to overwrite frame in FrameMap with different value");
+                    }
+                },
+                None => {
+                    self.push(*k, v.clone());
+                }
+            }
+        }
+    }
+
+    pub fn cloned_vecdeque(self: &Self) -> VecDeque<(i64, T)> {
+        VecDeque::from(self.0.clone())
     }
 }
 

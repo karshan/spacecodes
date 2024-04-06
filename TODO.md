@@ -1,6 +1,7 @@
 #Features
  * [P1] latency based frame_delay
     * send packets only every other frame
+    * Latency measurement doesnt account for out of order packets
  * [P1] Easily playable online
     * Binary should check version with server on launch
     * Enter lobby code to join game
@@ -15,6 +16,7 @@
  * [P2] Message death animation (stop and fade out)
  * [P2] Show text error message if trying to intercept without enough gold/too close to enemy unit
  * [P2] Give an indication when not enough lumber for path
+ * [P3] "Cast Animations" for blink, message spawn, intercept. To ease latency.
  * [P3] Grapple (short range power shot to grab buffs)
  * [P3] Sound
  * [P3] Better intercept cursor ?
