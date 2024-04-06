@@ -1,13 +1,17 @@
 #Features
  * [P1] latency based frame_delay
+    * send packets only every other frame
  * [P1] Easily playable online
     * Binary should check version with server on launch
     * Enter lobby code to join game
     * Ready -> 3,2,1
     * Host binary somewhere
+ * [P1] Fullscreen/resolution scaling
+ * [P1] Handle low frame_rate
  * [P1] Path's drawn as rectangle not thick lines
  * [P1] Map visual overhaul
  * [P1] Passive lumber 1/5sec when below 5
+ * [P2] Recover when packets from both clients are dropped on the same frame
  * [P2] Message death animation (stop and fade out)
  * [P2] Show text error message if trying to intercept without enough gold/too close to enemy unit
  * [P2] Give an indication when not enough lumber for path

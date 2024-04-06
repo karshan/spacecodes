@@ -515,6 +515,7 @@ fn main() -> std::io::Result<()> {
     let mut next_send_frame = 0;
     let mut unsent_pkt = vec![];
     let mut unacked_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
+    let mut acked_non_empty_pkts: Vec<i64> = vec![];
     let mut future_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut sent_pkts: VecDeque<(i64, Vec<GameCommand>)> = VecDeque::new();
     let mut last_rcvd_pkt = -1;
@@ -579,6 +580,7 @@ fn main() -> std::io::Result<()> {
                         next_send_frame = 0;
                         unsent_pkt = vec![];
                         unacked_pkts = VecDeque::new();
+                        acked_non_empty_pkts = vec![];
                         future_pkts = VecDeque::new();
                         sent_pkts = VecDeque::new();
                         my_frame_delay = 1;
@@ -636,11 +638,9 @@ fn main() -> std::io::Result<()> {
                     Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay }) => {
                         waiting_avg.sample(waiting.elapsed().as_secs_f64());
                         waiting = Instant::now();
-
-                        if frame_delay > my_frame_delay {
-                            m_new_frame_delay = Some(frame_delay);
-                        }
                         future_pkts.append(&mut updates.clone());
+                        let mut new_nonempty_acked_pkts = unacked_pkts.iter().cloned().filter(|(f, ps)| *f <= frame_ack && *f >= frame_counter && !ps.is_empty()).map(|(f, _)| f).collect::<Vec<_>>();
+                        acked_non_empty_pkts.append(&mut new_nonempty_acked_pkts);
                         unacked_pkts.retain(|ps| ps.0 > frame_ack);
                         last_rcvd_pkt = frame;
                     },
@@ -850,12 +850,23 @@ fn main() -> std::io::Result<()> {
 
                 if next_send_frame <= frame_counter {
                     if let Some(new_frame_delay) = m_new_frame_delay {
-                        for i in my_frame_delay..new_frame_delay {
-                            unacked_pkts.push_front((frame_counter + i as i64, vec![]));
-                            sent_pkts.push_front((frame_counter + i as i64, vec![]));
+                        if new_frame_delay > my_frame_delay {
+                            for i in my_frame_delay..new_frame_delay {
+                                unacked_pkts.push_front((frame_counter + i as i64, vec![]));
+                                sent_pkts.push_front((frame_counter + i as i64, vec![]));
+                            }
+                            m_new_frame_delay = None;
+                            my_frame_delay = new_frame_delay;
+                        } else {
+                            if unacked_pkts.iter().any(|(f, ps)| *f > frame_counter + new_frame_delay as i64 && !ps.is_empty()) ||
+                                acked_non_empty_pkts.iter().any(|f| *f > frame_counter + new_frame_delay as i64) {
+                                // can't do it
+                            } else {
+                                m_new_frame_delay = None;
+                                my_frame_delay = new_frame_delay;
+                                acked_non_empty_pkts.retain(|f| *f >= frame_counter);
+                            }
                         }
-                        m_new_frame_delay = None;
-                        my_frame_delay = new_frame_delay;
                     }
                     unacked_pkts.push_front((frame_counter + my_frame_delay as i64, unsent_pkt.clone()));
                     socket_send(&socket, &server[0], &ClientPkt::Target { 
@@ -900,9 +911,10 @@ fn main() -> std::io::Result<()> {
                 }
 
                 let waiting_one_pct_max = f64::min(waiting_avg.one_percent_max(), 300f64/1000f64);
-                if m_new_frame_delay.is_none() && waiting_one_pct_max > 20f64/1000f64 {
-                    let new_delay = (waiting_one_pct_max * (frame_rate as f64)).ceil() as u32;
-                    if new_delay > my_frame_delay as u32 {
+                if m_new_frame_delay.is_none() {
+                    let new_delay = (waiting_one_pct_max * (frame_rate as f64)).ceil() as i32;
+                    let mfd = my_frame_delay as i32;
+                    if new_delay > mfd || new_delay < mfd/2 {
                         m_new_frame_delay = Some(new_delay as u8);
                     }
                 }
