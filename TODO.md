@@ -1,3 +1,10 @@
+#Balance
+ * [P1] Passive lumber 1/5sec when below 5
+ * [P1] Balance gold and fuel
+    * 10 kills to win. or 10 kills gets you some upgrade.
+    * More fuel loss
+    * Less fuel gain from fuel bounty
+
 #Features
  * [P1] latency based frame_delay
     * send packets only every other frame
@@ -11,7 +18,6 @@
  * [P1] Handle low frame_rate
  * [P1] Path's drawn as rectangle not thick lines
  * [P1] Map visual overhaul
- * [P1] Passive lumber 1/5sec when below 5
  * [P2] Recover when packets from both clients are dropped on the same frame
  * [P2] Message death animation (stop and fade out)
  * [P2] Show text error message if trying to intercept without enough gold/too close to enemy unit
