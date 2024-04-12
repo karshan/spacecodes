@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 use raylib::prelude::*;
-use sc_types::GameState;
+use sc_types::{constants::{ship, ship_color, station}, GameState};
 
 use crate::MouseState;
 
@@ -66,6 +66,10 @@ fn draw_border(img: &mut Image, c: Color) {
             img.draw_pixel(j, i, c);
         }
     }
+}
+
+fn vec3(v2: Vector2, z: f32) -> Vector3 {
+    Vector3::new(v2.x, v2.y, z)
 }
 
 pub struct Renderer {
@@ -185,27 +189,45 @@ impl Renderer {
     
         for x in -12..12 {
             for y in -12..12 {
+                let v = Vector2::new(x as f32, y as f32);
+                let mut c = Color::from_hex("d9d9d9").unwrap();
+                let mut reset_tex = false;
                 if (mouse_position.x.round() == x as f32 && mouse_position.y.round() == y as f32) {
-                    self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
-                    _3d.draw_model(&self.floor, Vector3::zero(), 1.0, Color::WHITE);
+                    if *ship(0) == v {
+                        reset_tex = true;
+                        self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 0);
+                        c = ship_color(0);
+                    } else if *ship(1) == v {
+                        reset_tex = true;
+                        self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 0);
+                        c = ship_color(1);
+                    } else {
+                        c = Color::WHITE;
+                    }
                 } else {
-                    self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
-                    _3d.draw_model(&self.floor, Vector3::zero(), 1.0, Color::from_hex("d9d9d9").unwrap());
+                    if *ship(0) == v {
+                        c = ship_color(0).alpha(0.5);
+                    } else if *ship(1) == v {
+                        c = ship_color(1).alpha(0.5);
+                    }
+                }
+                self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
+                _3d.draw_model(&self.floor, Vector3::zero(), 1.0, c);
+                if reset_tex {
+                    self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 1);
                 }
             }
         }
-    
         self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 0);
         self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 0);
-        // _3d.draw_model(&self.cube, cubes[0], 1.0, Color::from_hex("83c5be").unwrap());
+
+        _3d.draw_cube(vec3(*station(0), 0.25), 0.1, 0.1, 0.5, ship_color(0).alpha(0.5));
+        _3d.draw_cube(vec3(*station(1), 0.25), 0.1, 0.1, 0.5, ship_color(1).alpha(0.5));
         for c in cubes {
-            // self.cube.set_transform(&Matrix::translate(c.x, c.y, c.z));
             _3d.draw_model(&self.cube, c, 1.0, Color::from_hex("83c5be").unwrap());
         }
 
-        fn vec3(v2: Vector2, z: f32) -> Vector3 {
-            Vector3::new(v2.x, v2.y, z)
-        }
+        
         match mouse_state {
             MouseState::Path(path, y_first) => {
                 let mut p = path[0];

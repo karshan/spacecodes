@@ -154,11 +154,11 @@ fn deliver_messages(game_state: &mut GameState, p_id: usize) {
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
 
-    let my_bounties = game_state.my_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
+    let my_bounties = game_state.my_units.iter_mut().filter(|u| u.pos == *station(u.player_id))
         .map(|u| { u.dead = true; u }).fold(HashMap::new(), |acc, e| hm_add(acc, &e.carrying_bounty));
     apply_bounties(game_state, p_id, my_bounties);
     reap(game_state);
-    let other_bounties = game_state.other_units.iter_mut().filter(|u| u.rect().collide(station(u.player_id)))
+    let other_bounties = game_state.other_units.iter_mut().filter(|u| u.pos == *station(u.player_id))
         .map(|u| { u.dead = true; u }).fold(HashMap::new(), |acc, e| hm_add(acc, &e.carrying_bounty));
     apply_bounties(game_state, other_id, other_bounties);
     game_state.other_units.retain(|u| !u.dead);
@@ -263,42 +263,6 @@ fn serialize_state(game_state: &GameState, p_id: usize) -> Result<Vec<u8>, rmps:
     Ok(v)
 }
 
-fn get_manhattan_turn_point(p1: Vector2, p2: Vector2, p_id: usize) -> (bool, Vector2) {
-    let m1 = Vector2 { x: p1.x, y: p2.y };
-    let m2 = Vector2 { x: p2.x, y: p1.y };
-    let sx = Vector2 { x: MESSAGE_SIZE.x, y: 0f32 };
-    let sy = Vector2 { x: 0f32, y: MESSAGE_SIZE.y };
-    let offsets = [ Vector2::zero(), sx, sy, *MESSAGE_SIZE ];
-    let mut blocked: Vec<Rect<i32>> = (if p_id == 0 { P0_BLOCKED } else { P1_BLOCKED }).to_vec();
-    blocked.extend(BLOCKED.to_vec());
-    let m1_ok = !path_collides(&blocked, offsets, p1, m1) && !path_collides(&blocked, offsets, m1, p2);
-    let m2_ok = !path_collides(&blocked, offsets, p1, m2) && !path_collides(&blocked, offsets, m2, p2);
-    let p1_ok = PLAY_AREA.contains(&unit_rect(&p1, MESSAGE_SIZE));
-    let p2_ok = PLAY_AREA.contains(&unit_rect(&p2, MESSAGE_SIZE));
-    let none = if (p1.x - p2.x).abs() < (p1.y - p2.y).abs() {
-            (false, m1)
-        } else {
-            (false, m2)
-        };
-    if !p1_ok || !p2_ok {
-        none
-    } else {
-        if m1_ok && m2_ok {
-            if (p1.x - p2.x).abs() < (p1.y - p2.y).abs() {
-                (true, m1)
-            } else {
-                (true, m2)
-            }
-        } else if m1_ok {
-            (true, m1)
-        } else if m2_ok {
-            (true, m2)
-        } else {
-            none
-        }
-    }
-}
-
 fn bounty_counts(bounties: &Vec<Bounty>) -> Vec<(BountyEnum, usize)> {
     let mut out = vec![];
     for b_type in [BountyEnum::Blink, BountyEnum::Fuel, BountyEnum::Gold, BountyEnum::Lumber] {
@@ -336,14 +300,14 @@ fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
         let t_to_spawn = m_t_to_spawn.unwrap_or(p_dist[p_dist.len() - 1].0);
 
         let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
-        while !PLAY_AREA.contains(&bounty_rect(&b)) ||
-                GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b)) ||
-                BLOCKED.iter().any(|r| r.collide(&bounty_rect(&b)))) ||
-                (ship(0).center() - b).length() < 150f32 ||
-                (ship(1).center() - b).length() < 150f32 ||
-                game_state.bounties.iter().any(|existing_b| bounty_rect(&existing_b.pos).collide(&bounty_rect(&b))) {
-            b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
-        }
+        // while !PLAY_AREA.contains(&bounty_rect(&b)) ||
+        //         GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b)) ||
+        //         BLOCKED.iter().any(|r| r.collide(&bounty_rect(&b)))) ||
+        //         (ship(0).center() - b).length() < 150f32 ||
+        //         (ship(1).center() - b).length() < 150f32 ||
+        //         game_state.bounties.iter().any(|existing_b| bounty_rect(&existing_b.pos).collide(&bounty_rect(&b))) {
+        //     b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
+        // }
         game_state.bounties.push(Bounty { type_: t_to_spawn, amount: t_to_spawn.amount(rng), pos: b });
     } 
 }
@@ -462,7 +426,6 @@ fn main() -> std::io::Result<()> {
         (AreaEnum::Blocked, Color::from_hex("99a3a3").unwrap()), // 4d908e 3d348b 33415c 
     ]);
     let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 255), rcolor(0x74, 0xC6, 0x9D, 255)];
-    let msg_spawn_pos = [Vector2 { x: -12.0, y: 10.0 }, Vector2 { x: -11.0, y: 11.0 }];
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -736,7 +699,7 @@ fn main() -> std::io::Result<()> {
                         if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
                             MouseState::Drag(mouse_position)
                         } else if start_message_path {
-                            MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]), true)
+                            MouseState::Path(VecDeque::from(vec![*ship(p_id)]), true)
                         } else if start_intercept {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_POINTING_HAND);
                             MouseState::Intercept(false)
@@ -752,7 +715,8 @@ fn main() -> std::io::Result<()> {
                             let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
                             let selection_rect = Rect { x: selection_pos.x.round() as i32, y: selection_pos.y.round() as i32, w: selection_size.x.round() as i32, h: selection_size.y.round() as i32 };
                             let mut in_box: Vec<Selection> = collide_units(&game_state.my_units, &selection_pos, &selection_size).iter().map(|u_id| Selection::Unit(*u_id)).collect();
-                            if ship(p_id).collide(&selection_rect) {
+                            // if ship(p_id).collide(&selection_rect) {
+                            if false {
                                 in_box.push(Selection::Ship);
                             }
                             if !in_box.is_empty() {
