@@ -30,8 +30,8 @@ pub static INTERCEPT_EXPIRY: f32 = 2f32 * 60f32;
 pub static BLINK_RANGE: f32 = 120f32;
 pub static KILLS_TO_WIN: u8 = 5;
 pub static PLAY_AREA: Rect<i32> = Rect {
-    x: -11, y: -11,
-    w: 25, h: 25,
+    x: 0, y: 0,
+    w: 1000, h: 1000,
 };
 pub static GAME_MAP: [(AreaEnum, Rect<i32>); 5] = [
     (AreaEnum::Blocked, Rect {
