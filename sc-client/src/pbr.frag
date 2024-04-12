@@ -47,7 +47,7 @@ uniform Light lights[MAX_LIGHTS];
 uniform vec3 viewPos;
 
 uniform int useAo;
-uniform vec3 cubePos;
+uniform vec3 cubePos[2];
 uniform vec3 cubeSize;
 
 float sdBox(vec3 p, vec3 b) {
@@ -56,7 +56,7 @@ float sdBox(vec3 p, vec3 b) {
 }
 
 float map(in vec3 pos) {
-    return sdBox(pos - cubePos, cubeSize/2.5);
+    return min(sdBox(pos - cubePos[0], cubeSize/2), sdBox(pos - cubePos[1], cubeSize/2));
 }
 
 // https://iquilezles.org/articles/nvscene2008/rwwtt.pdf

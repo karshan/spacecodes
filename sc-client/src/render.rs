@@ -2,6 +2,8 @@ use std::f32::consts::PI;
 use raylib::prelude::*;
 use sc_types::GameState;
 
+use crate::MouseState;
+
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub enum LightType {
@@ -57,11 +59,6 @@ fn create_light(_type: LightType, position: Vector3, target: Vector3, color: Col
     light
 }
 
-enum MouseState {
-    Path(Vec<Vector2>),
-    None
-}
-
 fn draw_border(img: &mut Image, c: Color) {
     for i in 0..2048 {
         for j in 0..32 {
@@ -77,7 +74,6 @@ pub struct Renderer {
     background_color: Color,
     floor: Model,
     cube: Model,
-    xtr: Texture2D,
 }
 
 
@@ -113,7 +109,8 @@ impl Renderer {
     
         let mut img = Image::load_image("sc-client/assets/tex4.png").unwrap();
         draw_border(&mut img, background_color);
-        let xtr_tile = rl.load_texture_from_image(&thread, &mut img).unwrap();
+        // If we let the texture drop, it will be unloaded. Must make_weak
+        let xtr_tile = unsafe { rl.load_texture_from_image(&thread, &mut img).unwrap().make_weak() };
         
         let w = 1.0;
         let h = 1.0;
@@ -128,7 +125,6 @@ impl Renderer {
         let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, cube_size.x, cube_size.y, cube_size.z).make_weak() }).unwrap();
         cube.materials_mut()[0].shader = shader.clone();
     
-        let mut mouse_state: MouseState = MouseState::None;
         let mut ctr = 0;
         let mut cube_pos = Vector3::new(0.0, 0.0, 0.5);
         let mut cube_dir = Vector3::new(1.0, 0.0, 0.0);
@@ -142,7 +138,6 @@ impl Renderer {
             background_color: background_color,
             floor: floor,
             cube: cube,
-            xtr: xtr_tile,
         }
     }
 
@@ -155,9 +150,9 @@ impl Renderer {
     }
     
     pub fn screen2world(raw_mouse_position: Vector2, screen_width: f64, screen_height: f64) -> Vector3 {
-        let screen2world_mat = Renderer::iso_proj(screen_width, screen_height) *
-        Matrix::translate(-1.0, 1.0, 0.0) *
-        Matrix::scale(2.0/screen_width as f32, -2.0/screen_height as f32, 1.0);
+        let screen2world_mat = Renderer::iso_proj(screen_width, screen_height).inverted() *
+            Matrix::translate(-1.0, 1.0, 0.0) *
+            Matrix::scale(2.0/screen_width as f32, -2.0/screen_height as f32, 1.0);
         let mut mouse_position = Vector3::new(raw_mouse_position.x, raw_mouse_position.y, 0f32).transform_with(screen2world_mat);
         mouse_position.x += mouse_position.z/2.0;
         mouse_position.y += mouse_position.z/2.0;
@@ -165,10 +160,11 @@ impl Renderer {
         mouse_position
     }
     
-    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, game_state: &GameState) {
+    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, game_state: &GameState, mouse_state: &MouseState) {
         let ctr = frame_counter;
         let screen_width = rl.get_screen_width() as f64;
         let screen_height = rl.get_screen_height() as f64;
+        let raw_mouse_position = rl.get_mouse_position();
     
         self.shader.set_shader_value(self.shader.locs()[ShaderLocationIndex::SHADER_LOC_VECTOR_VIEW as usize], Vector3::new(0.0, 0.0, 2.0f32.sqrt()));
         for i in 0..4 {
@@ -183,26 +179,41 @@ impl Renderer {
         _3d.clear_background(self.background_color);
     
         self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 1);
-        self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 0);
+        self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 1);
         // TODO get from game_state
         let cubes = [Vector3::new(0.0, 0.0, 0.5), Vector3::new(3.0, 3.0, 0.5)];
         // self.shader.set_shader_value_v(self.shader.get_shader_location("cubePos"), &cubes);
-        self.shader.set_shader_value(self.shader.get_shader_location("cubePos"), cubes[0]);
+        self.shader.set_shader_value_v(self.shader.get_shader_location("cubePos"), &cubes);
     
+        let mouse_position = Renderer::screen2world(raw_mouse_position, screen_width, screen_height);
         for x in -12..12 {
             for y in -12..12 {
-                self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
-                _3d.draw_model(&self.floor, Vector3::zero(), 1.0, Color::WHITE);
+                if !(mouse_position.x.round() == x as f32 && mouse_position.y.round() == y as f32) {
+                    self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
+                    _3d.draw_model(&self.floor, Vector3::zero(), 1.0, Color::from_hex("d9d9d9").unwrap());
+                }
             }
         }
     
         self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 0);
         self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 0);
-        _3d.draw_model(&self.cube, Vector3::zero(), 1.0, Color::from_hex("83c5be").unwrap());
-        // for c in cubes {
-        //     self.cube.set_transform(&Matrix::translate(c.x, c.y, c.z));
-        //     _3d.draw_model(&self.cube, Vector3::zero(), 1.0, Color::from_hex("83c5be").unwrap());
-        // }
+        for c in cubes {
+            _3d.draw_model(&self.cube, c, 1.0, Color::from_hex("83c5be").unwrap());
+        }
+
+        match mouse_state {
+            MouseState::Path(path) => {
+                let mut p = path[0];
+                for i in 1..path.len() {
+                    let next_p = path[i];
+                    _3d.draw_line_3D(Vector3::new(p.x, p.y, 0.01), Vector3::new(next_p.x, next_p.y, 0.01), Color::WHITE);
+                    p = next_p;
+                }
+                _3d.draw_line_3D(Vector3::new(p.x, p.y, 0.01), Vector3::new(p.x, mouse_position.y.round(), 0.01), Color::WHITE);
+                _3d.draw_line_3D(Vector3::new(p.x, mouse_position.y.round(), 0.01), Vector3::new(mouse_position.x.round(), mouse_position.y.round(), 0.01), Color::WHITE);
+            },
+            _ => {}
+        }
     }
 }
 
