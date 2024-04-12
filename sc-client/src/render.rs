@@ -183,11 +183,11 @@ impl Renderer {
         _3d.clear_background(self.background_color);
     
         self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 1);
-        self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 0);
+        self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 1);
         // TODO get from game_state
-        let cubes = [Vector3::new(0.0, 0.0, 0.5), Vector3::new(3.0, 3.0, 0.5)];
+        let cubes = [Vector3::new(((frame_counter as f32)/60.0).cos(), ((frame_counter as f32)/60.0).sin(), 0.5), Vector3::new(3.0, 3.0, 0.5)];
         // self.shader.set_shader_value_v(self.shader.get_shader_location("cubePos"), &cubes);
-        self.shader.set_shader_value(self.shader.get_shader_location("cubePos"), cubes[0]);
+        self.shader.set_shader_value_v(self.shader.get_shader_location("cubePos"), &cubes);
     
         for x in -12..12 {
             for y in -12..12 {
@@ -198,11 +198,11 @@ impl Renderer {
     
         self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 0);
         self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 0);
-        _3d.draw_model(&self.cube, Vector3::zero(), 1.0, Color::from_hex("83c5be").unwrap());
-        // for c in cubes {
-        //     self.cube.set_transform(&Matrix::translate(c.x, c.y, c.z));
-        //     _3d.draw_model(&self.cube, Vector3::zero(), 1.0, Color::from_hex("83c5be").unwrap());
-        // }
+        // _3d.draw_model(&self.cube, cubes[0], 1.0, Color::from_hex("83c5be").unwrap());
+        for c in cubes {
+            // self.cube.set_transform(&Matrix::translate(c.x, c.y, c.z));
+            _3d.draw_model(&self.cube, c, 1.0, Color::from_hex("83c5be").unwrap());
+        }
     }
 }
 
