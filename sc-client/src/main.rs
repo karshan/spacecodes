@@ -443,6 +443,14 @@ fn path_lumber_cost(path: &VecDeque<Vector2>) -> i32 {
     }
 }
 
+pub enum MouseState {
+    Drag(Vector2),
+    Path(VecDeque<Vector2>, bool),
+    Intercept(bool),
+    WaitReleaseLButton,
+    None
+}
+
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let max_input_queue = 10;
@@ -454,7 +462,7 @@ fn main() -> std::io::Result<()> {
         (AreaEnum::Blocked, Color::from_hex("99a3a3").unwrap()), // 4d908e 3d348b 33415c 
     ]);
     let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 255), rcolor(0x74, 0xC6, 0x9D, 255)];
-    let msg_spawn_pos = [Vector2 { x: 490f32, y: 340f32 }, Vector2 { x: 340f32, y: 490f32 }];
+    let msg_spawn_pos = [Vector2 { x: -12.0, y: 10.0 }, Vector2 { x: -11.0, y: 11.0 }];
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -473,7 +481,7 @@ fn main() -> std::io::Result<()> {
     }
 
     let (mut rl, thread) = raylib::init()
-        .size(2560, 1440)
+        .size(1920, 1080)
         .title("Space Codes")
         .msaa_4x()
         .build();
@@ -514,13 +522,6 @@ fn main() -> std::io::Result<()> {
     let mut m_new_frame_delay = None;
     // ------------------------
     let mut interceptions = vec![];
-    enum MouseState {
-        Drag(Vector2),
-        Path(VecDeque<Vector2>),
-        Intercept(bool),
-        WaitReleaseLButton,
-        None
-    }
     let mut mouse_state: MouseState = MouseState::None;
     let mut ended = None;
     let mut game_ps = TimeWindowAvg::new();
@@ -537,9 +538,13 @@ fn main() -> std::io::Result<()> {
     let mut waiting = Instant::now();
     let mut waiting_avg = WindowAvg::new(frame_rate as usize * 10);
 
+    fn vec2(v3: Vector3) -> Vector2 {
+        Vector2::new(v3.x, v3.y)
+    }
     let start_time = Instant::now();
     while !rl.window_should_close() {
-        let mouse_position = rl.get_mouse_position();
+        let raw_mouse_position = rl.get_mouse_position();
+        let mouse_position = vec2(Renderer::screen2world(raw_mouse_position, rl.get_screen_width() as f64, rl.get_screen_height() as f64));
         let fps = rl.get_fps();
 
         state = match state {
@@ -687,7 +692,7 @@ fn main() -> std::io::Result<()> {
                                 KeyboardKey::KEY_S => { shop_open = !shop_open }
                                 KeyboardKey::KEY_ESCAPE => {
                                     match mouse_state {
-                                        MouseState::Path(_) => { cancel = true }
+                                        MouseState::Path(_, _) => { cancel = true }
                                         MouseState::Intercept(_) => { cancel = true }
                                         _ => {}
                                     }
@@ -731,7 +736,7 @@ fn main() -> std::io::Result<()> {
                         if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
                             MouseState::Drag(mouse_position)
                         } else if start_message_path {
-                            MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]))
+                            MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]), true)
                         } else if start_intercept {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_POINTING_HAND);
                             MouseState::Intercept(false)
@@ -775,35 +780,51 @@ fn main() -> std::io::Result<()> {
                             MouseState::None
                         }
                     },
-                    MouseState::Path(mut path) => {
+                    MouseState::Path(mut path, y_first) => {
                         if cancel {
                             MouseState::None
                         } else {
-                            if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                                let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
-                                if let (true, m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
-                                    path.push_back(m);
-                                    if !station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
-                                        path.push_back(eff_mouse_pos);
-                                    }
-                                    if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) ||
-                                        station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
-                                        if game_state.lumber[p_id] >= path_lumber_cost(&path) - MSG_FREE_LUMBER {
-                                            unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
-                                            MouseState::WaitReleaseLButton
-                                        } else {
-                                            not_enough_lumber = true;
-                                            MouseState::WaitReleaseLButton
-                                        }
-                                    } else {
-                                        MouseState::Path(path)
-                                    }
+                            if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
+                                MouseState::Path(path, !y_first)
+                            } else if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+                                let p = path[path.len() - 1];
+                                let m: Vector2;
+                                if y_first {
+                                    m = Vector2::new(p.x.round(), mouse_position.y.round());
                                 } else {
-                                    MouseState::Path(path)
+                                    m = Vector2::new(mouse_position.x.round(), p.y.round());
                                 }
+                                path.push_back(m);
+                                path.push_back(Vector2::new(mouse_position.x.round(), mouse_position.y.round()));
+                                MouseState::Path(path, y_first)
                             } else {
-                                MouseState::Path(path)
-                            }
+                                MouseState::Path(path, y_first)
+                            } 
+                            // if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+                            //     let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
+                            //     if let (true, m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
+                            //         path.push_back(m);
+                            //         if !station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
+                            //             path.push_back(eff_mouse_pos);
+                            //         }
+                            //         if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) ||
+                            //             station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
+                            //             if game_state.lumber[p_id] >= path_lumber_cost(&path) - MSG_FREE_LUMBER {
+                            //                 unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
+                            //                 MouseState::WaitReleaseLButton
+                            //             } else {
+                            //                 not_enough_lumber = true;
+                            //                 MouseState::WaitReleaseLButton
+                            //             }
+                            //         } else {
+                            //             MouseState::Path(path)
+                            //         }
+                            //     } else {
+                            //         MouseState::Path(path)
+                            //     }
+                            // } else {
+                            //     MouseState::Path(path)
+                            // }
                         }
                     },
                     MouseState::Intercept(vertical) => {
@@ -945,7 +966,7 @@ fn main() -> std::io::Result<()> {
             },
         };
 
-        render.render(&mut rl, &thread, frame_counter, &game_state);
+        render.render(&mut rl, &thread, frame_counter, &game_state, mouse_position, &mouse_state);
     }
     Ok(())
 }

@@ -2,6 +2,8 @@ use std::f32::consts::PI;
 use raylib::prelude::*;
 use sc_types::GameState;
 
+use crate::MouseState;
+
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub enum LightType {
@@ -57,11 +59,6 @@ fn create_light(_type: LightType, position: Vector3, target: Vector3, color: Col
     light
 }
 
-enum MouseState {
-    Path(Vec<Vector2>),
-    None
-}
-
 fn draw_border(img: &mut Image, c: Color) {
     for i in 0..2048 {
         for j in 0..32 {
@@ -79,8 +76,6 @@ pub struct Renderer {
     cube: Model,
     xtr: Texture2D,
 }
-
-
 
 impl Renderer {
     pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> Renderer {
@@ -128,7 +123,6 @@ impl Renderer {
         let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, cube_size.x, cube_size.y, cube_size.z).make_weak() }).unwrap();
         cube.materials_mut()[0].shader = shader.clone();
     
-        let mut mouse_state: MouseState = MouseState::None;
         let mut ctr = 0;
         let mut cube_pos = Vector3::new(0.0, 0.0, 0.5);
         let mut cube_dir = Vector3::new(1.0, 0.0, 0.0);
@@ -155,7 +149,7 @@ impl Renderer {
     }
     
     pub fn screen2world(raw_mouse_position: Vector2, screen_width: f64, screen_height: f64) -> Vector3 {
-        let screen2world_mat = Renderer::iso_proj(screen_width, screen_height) *
+        let screen2world_mat = Renderer::iso_proj(screen_width, screen_height).inverted() *
         Matrix::translate(-1.0, 1.0, 0.0) *
         Matrix::scale(2.0/screen_width as f32, -2.0/screen_height as f32, 1.0);
         let mut mouse_position = Vector3::new(raw_mouse_position.x, raw_mouse_position.y, 0f32).transform_with(screen2world_mat);
@@ -165,7 +159,7 @@ impl Renderer {
         mouse_position
     }
     
-    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, game_state: &GameState) {
+    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, game_state: &GameState, mouse_position: Vector2, mouse_state: &MouseState) {
         let ctr = frame_counter;
         let screen_width = rl.get_screen_width() as f64;
         let screen_height = rl.get_screen_height() as f64;
@@ -191,8 +185,13 @@ impl Renderer {
     
         for x in -12..12 {
             for y in -12..12 {
-                self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
-                _3d.draw_model(&self.floor, Vector3::zero(), 1.0, Color::WHITE);
+                if (mouse_position.x.round() == x as f32 && mouse_position.y.round() == y as f32) {
+                    self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
+                    _3d.draw_model(&self.floor, Vector3::zero(), 1.0, Color::WHITE);
+                } else {
+                    self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
+                    _3d.draw_model(&self.floor, Vector3::zero(), 1.0, Color::from_hex("d9d9d9").unwrap());
+                }
             }
         }
     
@@ -202,6 +201,29 @@ impl Renderer {
         for c in cubes {
             // self.cube.set_transform(&Matrix::translate(c.x, c.y, c.z));
             _3d.draw_model(&self.cube, c, 1.0, Color::from_hex("83c5be").unwrap());
+        }
+
+        fn vec3(v2: Vector2, z: f32) -> Vector3 {
+            Vector3::new(v2.x, v2.y, z)
+        }
+        match mouse_state {
+            MouseState::Path(path, y_first) => {
+                let mut p = path[0];
+                for i in 1..path.len() {
+                    let next_p = path[i];
+                    _3d.draw_line_3D(vec3(p, 0.01), vec3(next_p, 0.01), Color::WHITE);
+                    p = next_p;
+                }
+                let m: Vector3;
+                if *y_first {
+                    m = Vector3::new(p.x.round(), mouse_position.y.round(), 0.01);
+                } else {
+                    m = Vector3::new(mouse_position.x.round(), p.y.round(), 0.01);
+                }
+                _3d.draw_line_3D(vec3(p, 0.01), m, Color::WHITE);
+                _3d.draw_line_3D(m, Vector3::new(mouse_position.x.round(), mouse_position.y.round(), 0.01), Color::WHITE);
+            }
+            _ => {}
         }
     }
 }
