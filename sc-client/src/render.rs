@@ -147,7 +147,7 @@ impl Renderer {
     pub fn iso_proj(screen_width: f64, screen_height: f64) -> Matrix {
         let aspect = screen_width/screen_height;
     
-        let clip = 10f64;
+        let clip = 14f64;
         Matrix::ortho(-clip * aspect, clip * aspect, -clip, clip, -clip, clip) *
             Matrix::rotate_x(-35.264 * 2.0 * PI/360.0) * Matrix::rotate_z(PI/4.0)
     }
@@ -182,38 +182,34 @@ impl Renderer {
     
         self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 1);
         self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 1);
-        for x in -12..12 {
-            for y in -12..12 {
-                let v = Vector2::new(x as f32, y as f32);
+        for x in -12..=12 {
+            for y in -12..=12 {
                 let mut c = Color::from_hex("d9d9d9").unwrap();
-                let mut reset_tex = false;
                 if (mouse_position.x.round() == x as f32 && mouse_position.y.round() == y as f32) {
-                    if *ship(0) == v {
-                        reset_tex = true;
-                        self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 0);
-                        c = ship_color(0);
-                    } else if *ship(1) == v {
-                        reset_tex = true;
-                        self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 0);
-                        c = ship_color(1);
-                    } else {
-                        c = Color::WHITE;
-                    }
+                    c = Color::WHITE;
                 }
                 self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
                 _3d.draw_model(&self.floor, Vector3::zero(), 1.0, c);
-                if reset_tex {
-                    self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 1);
-                }
             }
         }
         self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 0);
         self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 0);
 
+        // TODO add these to cubePos so they have ao shadows
+        let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
+        self.cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
+        _3d.draw_model(&self.cube, vec3(*ship(0), 0.5), 1.0, message_color(0));
+        _3d.draw_cube_wires(vec3(*ship(0), 0.5), 0.5, 0.5, 0.5, message_color(0));
+
+        self.cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
+        _3d.draw_model(&self.cube, vec3(*ship(1), 0.5), 1.0, message_color(1));
+        _3d.draw_cube_wires(vec3(*ship(1), 0.5), 0.5, 0.5, 0.5, message_color(1));
+
+        self.cube.set_transform(&Matrix::identity());
+
         _3d.draw_cube(vec3(*station(0), 0.25), 0.1, 0.1, 0.5, ship_color(0).alpha(0.5));
         _3d.draw_cube(vec3(*station(1), 0.25), 0.1, 0.1, 0.5, ship_color(1).alpha(0.5));
 
-        
         // TODO get from game_state
         let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, 0.5)).collect::<Vec<Vector3>>();
         // let cubes = [vec3(game_state.my_units.len(), ), Vector3::new(3.0, 3.0, 0.5)];
@@ -228,17 +224,6 @@ impl Renderer {
             _3d.draw_model(&self.cube, vec3(u.pos, 0.5), 1.0, message_color(u.player_id));
         }
 
-        let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
-        self.cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
-        _3d.draw_model(&self.cube, vec3(*ship(0), 0.5), 1.0, message_color(0));
-        _3d.draw_cube_wires(vec3(*ship(0), 0.5), 0.5, 0.5, 0.5, message_color(0));
-
-        self.cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
-        _3d.draw_model(&self.cube, vec3(*ship(1), 0.5), 1.0, message_color(1));
-        _3d.draw_cube_wires(vec3(*ship(1), 0.5), 0.5, 0.5, 0.5, message_color(1));
-
-        self.cube.set_transform(&Matrix::identity());
-        
         match mouse_state {
             MouseState::Path(path, y_first) => {
                 let mut p = path[0];

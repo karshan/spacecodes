@@ -33,8 +33,8 @@ pub static PLAY_AREA: Rect<i32> = Rect {
     x: -12, y: -12,
     w: 25, h: 25,
 };
-pub static SHIPS: [Vector2; 2] = [Vector2 { x: -12.0, y: 10.0 }, Vector2 { x: -11.0, y: 11.0 }];
-pub static STATIONS: [Vector2; 2] = [Vector2 { x: 10.0, y: -12.0 }, Vector2 { x: 11.0, y: -11.0 }];
+pub static SHIPS: [Vector2; 2] = [Vector2 { x: -12.0, y: 11.0 }, Vector2 { x: -11.0, y: 12.0 }];
+pub static STATIONS: [Vector2; 2] = [Vector2 { x: 11.0, y: -12.0 }, Vector2 { x: 12.0, y: -11.0 }];
 
 pub fn station(p_id: usize) -> &'static Vector2 {
     &STATIONS[p_id]
