@@ -51,3 +51,12 @@ pub fn ship_color(p_id: usize) -> Color {
         Color::RED
     }
 }
+
+pub fn message_color(p_id: usize) -> Color {
+    if p_id == 0 {
+        // 3a86ff
+        Color::from_hex("2510fd").unwrap()
+    } else {
+        Color::from_hex("780000").unwrap()
+    }
+}

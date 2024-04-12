@@ -47,8 +47,9 @@ uniform Light lights[MAX_LIGHTS];
 uniform vec3 viewPos;
 
 uniform int useAo;
-uniform vec3 cubePos[2];
+uniform vec3 cubePos[20];
 uniform vec3 cubeSize;
+uniform int numCubes;
 
 float sdBox(vec3 p, vec3 b) {
   vec3 q = abs(p) - b;
@@ -56,7 +57,11 @@ float sdBox(vec3 p, vec3 b) {
 }
 
 float map(in vec3 pos) {
-    return min(sdBox(pos - cubePos[0], cubeSize/2.5), sdBox(pos - cubePos[1], cubeSize/2.5));
+    float result = 1000.0;
+    for (int i = 0; i < numCubes; i++) {
+        result = min(result, sdBox(pos - cubePos[i], cubeSize/2.5));
+    }
+    return result;
 }
 
 // https://iquilezles.org/articles/nvscene2008/rwwtt.pdf

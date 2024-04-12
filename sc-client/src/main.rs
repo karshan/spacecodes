@@ -750,7 +750,7 @@ fn main() -> std::io::Result<()> {
                         } else {
                             if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
                                 MouseState::Path(path, !y_first)
-                            } else if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+                            } else if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
                                 let p = path[path.len() - 1];
                                 let m: Vector2;
                                 if y_first {
@@ -759,36 +759,23 @@ fn main() -> std::io::Result<()> {
                                     m = Vector2::new(mouse_position.x.round(), p.y.round());
                                 }
                                 path.push_back(m);
-                                path.push_back(Vector2::new(mouse_position.x.round(), mouse_position.y.round()));
-                                MouseState::Path(path, y_first)
+                                if !(*station(p_id) == m) {
+                                    path.push_back(Vector2::new(mouse_position.x.round(), mouse_position.y.round()));
+                                }
+                                if *station(p_id) == m || *station(p_id) == Vector2::new(mouse_position.x.round(), mouse_position.y.round()) {
+                                    if game_state.lumber[p_id] >= path_lumber_cost(&path) - MSG_FREE_LUMBER {
+                                        unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
+                                        MouseState::WaitReleaseLButton
+                                    } else {
+                                        not_enough_lumber = true;
+                                        MouseState::WaitReleaseLButton
+                                    }
+                                } else {
+                                    MouseState::Path(path, y_first)
+                                }
                             } else {
                                 MouseState::Path(path, y_first)
-                            } 
-                            // if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                            //     let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
-                            //     if let (true, m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
-                            //         path.push_back(m);
-                            //         if !station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
-                            //             path.push_back(eff_mouse_pos);
-                            //         }
-                            //         if station(p_id).collide(&unit_rect(&eff_mouse_pos, MESSAGE_SIZE)) ||
-                            //             station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
-                            //             if game_state.lumber[p_id] >= path_lumber_cost(&path) - MSG_FREE_LUMBER {
-                            //                 unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
-                            //                 MouseState::WaitReleaseLButton
-                            //             } else {
-                            //                 not_enough_lumber = true;
-                            //                 MouseState::WaitReleaseLButton
-                            //             }
-                            //         } else {
-                            //             MouseState::Path(path)
-                            //         }
-                            //     } else {
-                            //         MouseState::Path(path)
-                            //     }
-                            // } else {
-                            //     MouseState::Path(path)
-                            // }
+                            }
                         }
                     },
                     MouseState::Intercept(vertical) => {

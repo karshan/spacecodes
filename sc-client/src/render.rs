@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 use raylib::prelude::*;
-use sc_types::{constants::{ship, ship_color, station}, GameState};
+use sc_types::{constants::{message_color, ship, ship_color, station}, GameState};
 
 use crate::MouseState;
 
@@ -182,11 +182,6 @@ impl Renderer {
     
         self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 1);
         self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 1);
-        // TODO get from game_state
-        let cubes = [Vector3::new(((frame_counter as f32)/60.0).cos(), ((frame_counter as f32)/60.0).sin(), 0.5), Vector3::new(3.0, 3.0, 0.5)];
-        // self.shader.set_shader_value_v(self.shader.get_shader_location("cubePos"), &cubes);
-        self.shader.set_shader_value_v(self.shader.get_shader_location("cubePos"), &cubes);
-    
         for x in -12..12 {
             for y in -12..12 {
                 let v = Vector2::new(x as f32, y as f32);
@@ -223,8 +218,20 @@ impl Renderer {
 
         _3d.draw_cube(vec3(*station(0), 0.25), 0.1, 0.1, 0.5, ship_color(0).alpha(0.5));
         _3d.draw_cube(vec3(*station(1), 0.25), 0.1, 0.1, 0.5, ship_color(1).alpha(0.5));
-        for c in cubes {
-            _3d.draw_model(&self.cube, c, 1.0, Color::from_hex("83c5be").unwrap());
+
+        
+        // TODO get from game_state
+        let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, 0.5)).collect::<Vec<Vector3>>();
+        // let cubes = [vec3(game_state.my_units.len(), ), Vector3::new(3.0, 3.0, 0.5)];
+        if (cubes.len() <= 20) {
+            self.shader.set_shader_value_v(self.shader.get_shader_location("cubePos"), cubes.as_slice());
+            self.shader.set_shader_value(self.shader.get_shader_location("numCubes"), cubes.len() as i32);
+        } else {
+            self.shader.set_shader_value(self.shader.get_shader_location("numCubes"), 0);
+        }
+        for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
+            // Color::from_hex("83c5be").unwrap()
+            _3d.draw_model(&self.cube, vec3(u.pos, 0.5), 1.0, message_color(u.player_id));
         }
 
         
