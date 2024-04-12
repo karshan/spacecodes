@@ -177,7 +177,7 @@ fn tick(game_state: &mut GameState) {
 
     game_state.fuel.iter_mut().for_each(|f| *f -= FUEL_LOSS);
     game_state.gold.iter_mut().for_each(|g| *g += PASSIVE_GOLD_GAIN);
-    game_state.spawn_cooldown.iter_mut().for_each(|s| *s -= 1);
+    game_state.spawn_cooldown.iter_mut().for_each(|s| *s = max(*s - 1, 0));
 }
 
 fn collide_units(units: &Vec<Unit>, p: &Vector2, s: &Vector2) -> Vec<usize> {
@@ -444,7 +444,8 @@ fn main() -> std::io::Result<()> {
     }
 
     let (mut rl, thread) = raylib::init()
-        .size(1920, 1080)
+        .size(2560, 1440)
+        // .fullscreen()
         .title("Space Codes")
         .msaa_4x()
         .build();

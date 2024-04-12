@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 use raylib::prelude::*;
-use sc_types::{constants::{message_color, ship, ship_color, station}, GameState};
+use sc_types::{constants::{message_color, ship, ship_color, station, MSG_COOLDOWN}, GameState};
 
 use crate::MouseState;
 
@@ -147,7 +147,7 @@ impl Renderer {
     pub fn iso_proj(screen_width: f64, screen_height: f64) -> Matrix {
         let aspect = screen_width/screen_height;
     
-        let clip = 14f64;
+        let clip = 10f64;
         Matrix::ortho(-clip * aspect, clip * aspect, -clip, clip, -clip, clip) *
             Matrix::rotate_x(-35.264 * 2.0 * PI/360.0) * Matrix::rotate_z(PI/4.0)
     }
@@ -199,12 +199,6 @@ impl Renderer {
                     } else {
                         c = Color::WHITE;
                     }
-                } else {
-                    if *ship(0) == v {
-                        c = ship_color(0).alpha(0.5);
-                    } else if *ship(1) == v {
-                        c = ship_color(1).alpha(0.5);
-                    }
                 }
                 self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
                 _3d.draw_model(&self.floor, Vector3::zero(), 1.0, c);
@@ -234,6 +228,16 @@ impl Renderer {
             _3d.draw_model(&self.cube, vec3(u.pos, 0.5), 1.0, message_color(u.player_id));
         }
 
+        let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
+        self.cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
+        _3d.draw_model(&self.cube, vec3(*ship(0), 0.5), 1.0, message_color(0));
+        _3d.draw_cube_wires(vec3(*ship(0), 0.5), 0.5, 0.5, 0.5, message_color(0));
+
+        self.cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
+        _3d.draw_model(&self.cube, vec3(*ship(1), 0.5), 1.0, message_color(1));
+        _3d.draw_cube_wires(vec3(*ship(1), 0.5), 0.5, 0.5, 0.5, message_color(1));
+
+        self.cube.set_transform(&Matrix::identity());
         
         match mouse_state {
             MouseState::Path(path, y_first) => {

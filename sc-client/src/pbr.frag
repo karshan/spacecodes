@@ -122,8 +122,8 @@ vec3 ComputePBR()
             diffuse *= occ;
         lightAccum += (albedo * 2.20 * diffuse * vec3(1.30,1.00,0.70)) * lights[i].enabled; // light color constant
     }
-    float t = length(viewPos - fragPosition);
-    lightAccum = mix( lightAccum, vec3(0.7,0.7,0.9), 1.0-exp( -0.0001*t*t*t ) );
+    // float t = length(viewPos - fragPosition);
+    // lightAccum = mix( lightAccum, vec3(0.7,0.7,0.9), 1.0-exp( -0.0001*t*t*t ) );
     return lightAccum + emissive;
 }
 
