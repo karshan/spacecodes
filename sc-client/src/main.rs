@@ -444,7 +444,7 @@ fn main() -> std::io::Result<()> {
     }
 
     let (mut rl, thread) = raylib::init()
-        .size(2560, 1440)
+        .size(1920, 1080)
         // .fullscreen()
         .title("Space Codes")
         .msaa_4x()
@@ -697,8 +697,8 @@ fn main() -> std::io::Result<()> {
                 not_enough_lumber = false;
                 mouse_state = match mouse_state {
                     MouseState::None => {
-                        if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-                            MouseState::Drag(mouse_position)
+                        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+                            MouseState::Drag(raw_mouse_position)
                         } else if start_message_path {
                             MouseState::Path(VecDeque::from(vec![*ship(p_id)]), true)
                         } else if start_intercept {
@@ -712,36 +712,36 @@ fn main() -> std::io::Result<()> {
                         if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
                             MouseState::Drag(start_pos)
                         } else {
-                            let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
-                            let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
-                            let selection_rect = Rect { x: selection_pos.x.round() as i32, y: selection_pos.y.round() as i32, w: selection_size.x.round() as i32, h: selection_size.y.round() as i32 };
-                            let mut in_box: Vec<Selection> = collide_units(&game_state.my_units, &selection_pos, &selection_size).iter().map(|u_id| Selection::Unit(*u_id)).collect();
-                            // if ship(p_id).collide(&selection_rect) {
-                            if false {
-                                in_box.push(Selection::Ship);
-                            }
-                            if !in_box.is_empty() {
-                                if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
-                                    game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
-                                } else {
-                                    game_state.selection = HashSet::from_iter(in_box);
-                                }
-                            }
-                            let mut choices = vec![];
-                            if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
-                                choices.push(SubSelection::Unit);
-                            }
-                            if game_state.selection.contains(&Selection::Ship) {
-                                choices.push(SubSelection::Ship);
-                            }
-                            if game_state.selection.contains(&Selection::Station) {
-                                choices.push(SubSelection::Station);
-                            }
-                            if choices.is_empty() {
-                                game_state.sub_selection = None;
-                            } else {
-                                game_state.sub_selection = Some(choices[0]);
-                            }
+                            // let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
+                            // let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
+                            // let selection_rect = Rect { x: selection_pos.x.round() as i32, y: selection_pos.y.round() as i32, w: selection_size.x.round() as i32, h: selection_size.y.round() as i32 };
+                            // let mut in_box: Vec<Selection> = collide_units(&game_state.my_units, &selection_pos, &selection_size).iter().map(|u_id| Selection::Unit(*u_id)).collect();
+                            // // if ship(p_id).collide(&selection_rect) {
+                            // if false {
+                            //     in_box.push(Selection::Ship);
+                            // }
+                            // if !in_box.is_empty() {
+                            //     if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
+                            //         game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
+                            //     } else {
+                            //         game_state.selection = HashSet::from_iter(in_box);
+                            //     }
+                            // }
+                            // let mut choices = vec![];
+                            // if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
+                            //     choices.push(SubSelection::Unit);
+                            // }
+                            // if game_state.selection.contains(&Selection::Ship) {
+                            //     choices.push(SubSelection::Ship);
+                            // }
+                            // if game_state.selection.contains(&Selection::Station) {
+                            //     choices.push(SubSelection::Station);
+                            // }
+                            // if choices.is_empty() {
+                            //     game_state.sub_selection = None;
+                            // } else {
+                            //     game_state.sub_selection = Some(choices[0]);
+                            // }
                             MouseState::None
                         }
                     },
@@ -918,7 +918,7 @@ fn main() -> std::io::Result<()> {
             },
         };
 
-        render.render(&mut rl, &thread, frame_counter, &game_state, mouse_position, &mouse_state);
+        render.render(&mut rl, &thread, frame_counter, p_id, &game_state, mouse_position, &mouse_state, &state, &NetInfo { game_ps: &game_ps, waiting_avg: &waiting_avg, my_frame_delay });
     }
     Ok(())
 }

@@ -1,8 +1,9 @@
 use std::f32::consts::PI;
 use raylib::prelude::*;
-use sc_types::{constants::{message_color, ship, ship_color, station, MSG_COOLDOWN}, GameState};
+use sc_types::*;
+use sc_types::constants::*;
 
-use crate::MouseState;
+use crate::{ClientState, MouseState, NetInfo};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -163,10 +164,12 @@ impl Renderer {
         mouse_position
     }
     
-    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, game_state: &GameState, mouse_position: Vector2, mouse_state: &MouseState) {
+    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState, mouse_position: Vector2, mouse_state: &MouseState, state: &ClientState, net_info: &NetInfo) {
         let ctr = frame_counter;
         let screen_width = rl.get_screen_width() as f64;
         let screen_height = rl.get_screen_height() as f64;
+        let fps = rl.get_fps();
+        let raw_mouse_position = rl.get_mouse_position();
     
         self.shader.set_shader_value(self.shader.locs()[ShaderLocationIndex::SHADER_LOC_VECTOR_VIEW as usize], Vector3::new(0.0, 0.0, 2.0f32.sqrt()));
         for i in 0..4 {
@@ -224,25 +227,49 @@ impl Renderer {
             _3d.draw_model(&self.cube, vec3(u.pos, 0.5), 1.0, message_color(u.player_id));
         }
 
-        match mouse_state {
-            MouseState::Path(path, y_first) => {
-                let mut p = path[0];
-                for i in 1..path.len() {
-                    let next_p = path[i];
-                    _3d.draw_line_3D(vec3(p, 0.01), vec3(next_p, 0.01), Color::WHITE);
-                    p = next_p;
-                }
-                let m: Vector3;
-                if *y_first {
-                    m = Vector3::new(p.x.round(), mouse_position.y.round(), 0.01);
-                } else {
-                    m = Vector3::new(mouse_position.x.round(), p.y.round(), 0.01);
-                }
-                _3d.draw_line_3D(vec3(p, 0.01), m, Color::WHITE);
-                _3d.draw_line_3D(m, Vector3::new(mouse_position.x.round(), mouse_position.y.round(), 0.01), Color::WHITE);
+        if let MouseState::Path(path, y_first) = mouse_state {
+            let mut p = path[0];
+            for i in 1..path.len() {
+                let next_p = path[i];
+                _3d.draw_line_3D(vec3(p, 0.01), vec3(next_p, 0.01), Color::WHITE);
+                p = next_p;
             }
-            _ => {}
+            let m: Vector3;
+            if *y_first {
+                m = Vector3::new(p.x.round(), mouse_position.y.round(), 0.01);
+            } else {
+                m = Vector3::new(mouse_position.x.round(), p.y.round(), 0.01);
+            }
+            _3d.draw_line_3D(vec3(p, 0.01), m, Color::WHITE);
+            _3d.draw_line_3D(m, Vector3::new(mouse_position.x.round(), mouse_position.y.round(), 0.01), Color::WHITE);
         }
+
+        drop(_3d);
+
+        if let MouseState::Drag(start_pos) = mouse_state {
+            let selection_pos = Vector2 { x: start_pos.x.min(raw_mouse_position.x), y: start_pos.y.min(raw_mouse_position.y) };
+            let selection_size = Vector2 { x: (start_pos.x - raw_mouse_position.x).abs(), y: (start_pos.y - raw_mouse_position.y).abs() };
+            _d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::GREEN);
+        }
+
+        let text_size = screen_height as f32/50.0;
+        let gap = Vector2::new(0.0, text_size + 10.0);
+        let mut text_pos = Vector2::new(20.0, 0.0) + gap;
+
+        _d.draw_text(&format!("{:?}", state), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
+        text_pos += gap;
+        _d.draw_text(&format!("fps/g: {}/{}", fps, net_info.game_ps.get_hz().round()), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
+        text_pos += gap;
+        _d.draw_text(&format!("w/1%/fd: {}/{}/{}", (net_info.waiting_avg.avg * 1000f64).round(), (net_info.waiting_avg.one_percent_max() * 1000f64).round(), net_info.my_frame_delay), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
+
+        text_pos = Vector2::new(20.0, screen_height as f32) - gap.scale_by(6.0);
+        _d.draw_text(&format!("Gold: {}/{}", game_state.gold[p_id].round(), game_state.gold[(p_id + 1) % 2].round()), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
+        text_pos += gap;
+        _d.draw_text(&format!("Lumber: {}/{}", game_state.lumber[p_id], game_state.lumber[(p_id + 1) % 2]), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
+        text_pos += gap;
+        _d.draw_text(&format!("Fuel: {}/{}", (game_state.fuel[p_id] * 100)/START_FUEL, (game_state.fuel[(p_id + 1) % 2] * 100)/START_FUEL), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
+        text_pos += gap;
+        _d.draw_text(&format!("K/D: {}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
     }
 }
 
