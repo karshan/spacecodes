@@ -17,11 +17,13 @@ mod util;
 mod pathfinding;
 mod types;
 mod ui;
+mod render;
 
 use util::*;
 use sc_types::constants::*;
 use types::*;
 
+use crate::render::Renderer;
 use crate::ui::*;
 
 struct Interception {
@@ -470,25 +472,15 @@ fn main() -> std::io::Result<()> {
         panic!("unable to resolve server?")
     }
 
-    set_trace_log(TraceLogLevel::LOG_ERROR);
     let (mut rl, thread) = raylib::init()
-        .size(PLAY_AREA.w, PLAY_AREA.h + 200)
+        .size(2560, 1440)
         .title("Space Codes")
-        .vsync()
+        .msaa_4x()
         .build();
+    // rl.set_trace_log(TraceLogLevel::LOG_ERROR);
     rl.set_target_fps(frame_rate);
-    let mut blink_shader = rl.load_shader(&thread, Some("sc-client/src/vertex.vs"), Some("sc-client/src/shiny_blink.fs")).unwrap();
-    let mut noise_shader = rl.load_shader(&thread, Some("sc-client/src/vertex.vs"), Some("sc-client/src/noise.fs")).unwrap();
-    let noise_u_time = noise_shader.get_shader_location("u_time");
-    let u_time = blink_shader.get_shader_location("u_time");
-    let u_resolution = blink_shader.get_shader_location("u_resolution");
-    let u_blink_band = blink_shader.get_shader_location("u_blink_band");
-    let u_top_left = blink_shader.get_shader_location("u_top_left");
 
-
-    let message_spell_icons = MessageSpellIcons::new(&mut rl, &thread);
-    let ship_spell_icons = ShipSpellIcons::new(&mut rl, &thread);
-    let bounty_icons = Bounties::new(&mut rl, &thread);
+    let mut render = Renderer::new(&mut rl, &thread);
 
     let mut state = ClientState::SendHello;
     // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
@@ -715,7 +707,7 @@ fn main() -> std::io::Result<()> {
                 }
 
                 // TODO && contains_point(SHOP_AREA, mouse_position)
-                if shop_open && rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
+                if shop_open && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
                     if let Some(shop_item) = shop.click(mouse_position) {
                         match shop_item {
                             ShopItem::Item(i) => {
@@ -736,7 +728,7 @@ fn main() -> std::io::Result<()> {
                 not_enough_lumber = false;
                 mouse_state = match mouse_state {
                     MouseState::None => {
-                        if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                        if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
                             MouseState::Drag(mouse_position)
                         } else if start_message_path {
                             MouseState::Path(VecDeque::from(vec![msg_spawn_pos[p_id]]))
@@ -748,7 +740,7 @@ fn main() -> std::io::Result<()> {
                         }
                     },
                     MouseState::Drag(start_pos) => {
-                        if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
                             MouseState::Drag(start_pos)
                         } else {
                             let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
@@ -787,7 +779,7 @@ fn main() -> std::io::Result<()> {
                         if cancel {
                             MouseState::None
                         } else {
-                            if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_LEFT_BUTTON) {
+                            if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
                                 let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
                                 if let (true, m) = get_manhattan_turn_point(path[path.len() - 1], eff_mouse_pos, p_id) {
                                     path.push_back(m);
@@ -818,7 +810,7 @@ fn main() -> std::io::Result<()> {
                         if cancel {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                             MouseState::None
-                        } else if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                        } else if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
                             if PLAY_AREA.contains_point(&mouse_position) &&
                                     !game_state.other_units.iter().any(|other_u| intercept_inside_bubble(other_u, &Interception { start_frame: 0, pos: mouse_position, vertical: vertical, player_id: 0 })) &&
                                     game_state.gold[p_id] >= INTERCEPT_COST {
@@ -829,14 +821,14 @@ fn main() -> std::io::Result<()> {
                                 intercept_err = true;
                                 MouseState::Intercept(vertical)
                             }
-                        } else if rl.is_mouse_button_pressed(MouseButton::MOUSE_RIGHT_BUTTON) {
+                        } else if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
                             MouseState::Intercept(!vertical)
                         } else {
                             MouseState::Intercept(vertical)
                         }
                     },
                     MouseState::WaitReleaseLButton => {
-                        if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
+                        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
                             MouseState::WaitReleaseLButton
                         } else {
                             MouseState::None
@@ -953,227 +945,7 @@ fn main() -> std::io::Result<()> {
             },
         };
 
-        let mut d = rl.begin_drawing(&thread);
-
-        d.clear_background(Color::WHITE);
-
-        for (t, r) in &GAME_MAP {
-            match t {
-                AreaEnum::P0Spawn => {
-                    d.draw_rectangle(r.x, r.y, r.w, (r.h * game_state.spawn_cooldown[0])/MSG_COOLDOWN, area_colors[&t]);
-                    d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
-                }
-                AreaEnum::P1Spawn => {
-                    d.draw_rectangle(r.x, r.y, (r.w * game_state.spawn_cooldown[1])/MSG_COOLDOWN, r.h, area_colors[&t]);
-                    d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
-                }
-                AreaEnum::P0Station => {
-                    d.draw_rectangle(r.x, r.y, r.w, (r.h * game_state.fuel[0])/START_FUEL, area_colors[&t]);
-                    d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
-                }
-                AreaEnum::P1Station => {
-                    let w = (r.w * game_state.fuel[1])/START_FUEL;
-                    d.draw_rectangle(r.x, r.y, w, r.h, area_colors[&t]);
-                    d.draw_rectangle_lines(r.x, r.y, r.w, r.h, area_colors[&t]);
-                }
-                AreaEnum::Blocked => {
-                    noise_shader.set_shader_value(noise_u_time, start_time.elapsed().as_secs_f32());
-                    let mut shd = d.begin_shader_mode(&noise_shader);
-                    shd.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&t]);
-                    drop(shd);
-                }
-            }
-        }
-
-        noise_shader.set_shader_value(noise_u_time, start_time.elapsed().as_secs_f32());
-        let mut shd = d.begin_shader_mode(&noise_shader);
-        for r in &BLOCKED {
-            shd.draw_rectangle(r.x, r.y, r.w, r.h, area_colors[&AreaEnum::Blocked])
-        }
-        drop(shd);
-
-        d.draw_rectangle_lines(RIVER.x, RIVER.y, RIVER.w, RIVER.h, Color::BLUE);
-
-        for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
-            let c = if u.player_id == 0 { u.p0_colors() } else { u.p1_colors() };
-            if u.blinking.is_some() {
-                blink_shader.set_shader_value(u_time, start_time.elapsed().as_secs_f32());
-                blink_shader.set_shader_value(u_resolution, PLAY_AREA.size() + Vector2::new(0f32, 200f32));
-                blink_shader.set_shader_value(u_blink_band, Vector3::new(1f32, 1f32, 1f32));
-                blink_shader.set_shader_value(u_top_left, u.pos);
-                let mut shd = d.begin_shader_mode(&blink_shader);
-                shd.draw_rectangle_v(u.pos, u.size(), c);
-                drop(shd);
-            } else {
-                d.draw_rectangle_v(u.pos, u.size(), c);
-            }
-
-            let mx = Vector2::new(5f32, 0f32);
-            let my = Vector2::new(0f32, 5f32);
-            let ms = mx + my;
-            if *u.carrying_bounty.get(&BountyEnum::Fuel).unwrap_or(&0) > 0 {
-                d.draw_rectangle_v(u.pos + ms, ms, BountyEnum::Fuel.color());
-            }
-            if *u.carrying_bounty.get(&BountyEnum::Gold).unwrap_or(&0) > 0 {
-                d.draw_rectangle_v(u.pos + ms + mx, ms, BountyEnum::Gold.color());
-            }
-            if *u.carrying_bounty.get(&BountyEnum::Lumber).unwrap_or(&0) > 0 {
-                d.draw_rectangle_v(u.pos + ms + my, ms, BountyEnum::Lumber.color());
-            }
-            if u.blinking.is_some() {
-                d.draw_rectangle_v(u.pos + ms + ms, ms, BountyEnum::Blink.color());
-            }
-            draw_bubble(&mut d, u, &c);
-        }
-
-        let mut sel_color = rcolor(0, 0, 0, 100);
-        for s in &game_state.selection {
-            match s {
-                Selection::Unit(u_id) => {
-                    if let Some(SubSelection::Unit) = game_state.sub_selection {
-                        sel_color = rcolor(0, 0, 0, 150);
-                    } else {
-                        sel_color = rcolor(0, 0, 0, 100);
-                    }
-                    let u = &game_state.my_units[*u_id];
-                    let selection_width = 4;
-                    let rect = u.rect();
-                    let r = Rectangle {
-                        x: (rect.x - selection_width) as f32,
-                        y: (rect.y - selection_width) as f32,
-                        width: (rect.w + selection_width * 2) as f32,
-                        height: (rect.h + selection_width * 2) as f32,
-                    };
-                    d.draw_rectangle_lines_ex(r, 4, sel_color);
-                    if !u.path.is_empty() {
-                        let mut p = u.pos + u.size().scale_by(0.5f32);
-                        let col = rcolor(0, 255, 0, 100);
-                        for i in 0..u.path.len() {
-                            let next_p = u.path[i] + u.size().scale_by(0.5f32);
-                            d.draw_line_ex(p, next_p, 2f32, col);
-                            p = next_p;
-                        }
-                    }
-                },
-                Selection::Ship => {
-                    if let Some(SubSelection::Ship) = game_state.sub_selection {
-                        sel_color = rcolor(0, 0, 0, 150);
-                    } else {
-                        sel_color = rcolor(0, 0, 0, 100);
-                    }
-                    let selection_width = 4;
-                    let rect = ship(p_id);
-                    let r = Rectangle {
-                        x: (rect.x - selection_width) as f32,
-                        y: (rect.y - selection_width) as f32,
-                        width: (rect.w + selection_width * 2) as f32,
-                        height: (rect.h + selection_width * 2) as f32,
-                    };
-                    d.draw_rectangle_lines_ex(r, 4, sel_color);
-                },
-                Selection::Station => {
-                    let rect = station(p_id);
-                    d.draw_rectangle_lines(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, sel_color)
-                },
-            }
-        }   
-
-        if game_state.sub_selection == Some(SubSelection::Unit) {
-            let cooldowns: Vec<i32> =
-                game_state.selection.iter().map(
-                    |s| if let Selection::Unit(uid) = s {
-                        let u = &game_state.my_units[*uid];
-                        u.blinking.map(|_| game_state.my_units[*uid].blink_cooldown)
-                    } else { None }
-                ).flatten().collect();
-
-            if !cooldowns.is_empty() {
-                message_spell_icons.render(&mut d, (*cooldowns.iter().min().unwrap() as f32)/(BLINK_COOLDOWN as f32));
-            }
-        } else if game_state.sub_selection == Some(SubSelection::Ship) {
-            ship_spell_icons.render(&mut d);
-        }
-
-        for a in &interceptions {
-            let int_ = intercept_line(&a);
-            d.draw_line_ex(int_[0], int_[1], 3f32, intercept_colors[a.player_id]);
-        }
-
-        if intercept_err || not_enough_lumber {
-            d.draw_circle_v(mouse_position, 50f32, rcolor(255, 0, 0, 100));
-        }
-
-        for b in &game_state.bounties {
-            bounty_icons.render(&mut d, b.type_, b.pos);
-        }
-
-        let path_width = 20f32;
-        match mouse_state {
-            MouseState::Drag(start_pos) => {
-                let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
-                let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
-                d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::GREEN)
-            },
-            MouseState::Path(ref path) => {
-                let mut p = path[0] + MESSAGE_SIZE.scale_by(0.5f32);
-                let col = rcolor(0, 255, 0, 100);
-                let bad_col = rcolor(255, 0, 0, 100);
-                for i in 1..path.len() {
-                    let next_p = path[i] + MESSAGE_SIZE.scale_by(0.5f32);
-                    d.draw_line_ex(p, next_p, path_width, col);
-                    p = next_p;
-                }
-
-                let cost_pos = ship(p_id).center() - Vector2::new(5f32, 10f32);
-                let mut cost = max(0, path_lumber_cost(path) - MSG_FREE_LUMBER);
-                let eff_mouse_pos = mouse_position - MESSAGE_SIZE.scale_by(0.5f32);
-                match get_manhattan_turn_point(p - MESSAGE_SIZE.scale_by(0.5f32), eff_mouse_pos, p_id) {
-                    (true, m) => {
-                        let mut tmp_path = path.clone();
-                        tmp_path.push_back(m);
-                        if !station(p_id).collide(&unit_rect(&m, MESSAGE_SIZE)) {
-                            tmp_path.push_back(eff_mouse_pos);
-                        }
-                        cost = max(0, path_lumber_cost(&tmp_path) - MSG_FREE_LUMBER);
-                        d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), path_width, col);
-                        d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, path_width, col);
-                    }
-                    (false, m) => {
-                        d.draw_line_ex(p, m + MESSAGE_SIZE.scale_by(0.5f32), path_width, bad_col);
-                        d.draw_line_ex(m + MESSAGE_SIZE.scale_by(0.5f32), mouse_position, path_width, bad_col);
-                    }
-                }
-                d.draw_text(&format!("{}", cost), cost_pos.x.round() as i32, cost_pos.y.round() as i32, 20, Color::BLACK);
-            },
-            MouseState::Intercept(vertical) => {
-                let int_ = intercept_line(&Interception { start_frame: 0, player_id: 0, pos: mouse_position, vertical: vertical });
-                d.draw_line_ex(int_[0], int_[1], 3f32, intercept_colors[p_id]);
-            },
-            _ => {}
-        }
-
-        d.draw_text(&format!("{:?}", state), 20, 20, 20, Color::BLACK);
-        d.draw_text(&format!("fps/g: {}/{}", fps, game_ps.get_hz().round()), 20, 40, 20, Color::BLACK);
-        d.draw_text(&format!("w/1%/fd: {}/{}/{}", (waiting_avg.avg * 1000f64).round(), (waiting_avg.one_percent_max() * 1000f64).round(), my_frame_delay), 20, 60, 20, Color::BLACK);
-        if let Some(end_state) = ended {
-            let end_str = match end_state {
-                Some(winner) => if winner == p_id { "YOU WON" } else { "YOU LOST" },
-                None => "DRAW",
-            };
-            d.draw_text(&end_str, 470, 370, 20, Color::BLACK);
-        }
-
-        d.draw_line(0, PLAY_AREA.h, PLAY_AREA.w, PLAY_AREA.h, Color::BLACK);
-        if let Some(sub_sel) = game_state.sub_selection {
-            d.draw_text(&format!("Selected: {:?}", sub_sel), 20, PLAY_AREA.h, 20, Color::BLACK);
-        }
-        d.draw_text(&format!("Gold: {}/{}", game_state.gold[p_id].round(), game_state.gold[(p_id + 1) % 2].round()), 20, PLAY_AREA.h + 20, 20, Color::BLACK);
-        d.draw_text(&format!("Lumber: {}/{}", game_state.lumber[p_id], game_state.lumber[(p_id + 1) % 2]), 20, PLAY_AREA.h + 40, 20, Color::BLACK);
-        d.draw_text(&format!("Fuel: {}/{}", (game_state.fuel[p_id] * 100)/START_FUEL, (game_state.fuel[(p_id + 1) % 2] * 100)/START_FUEL), 20, PLAY_AREA.h + 60, 20, Color::BLACK);
-        d.draw_text(&format!("K/D: {}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), 20, PLAY_AREA.h + 80, 20, Color::BLACK);
-        if shop_open {
-            shop.render(&mut d, &game_state.upgrades[p_id], game_state.gold[p_id]);
-        }
+        render.render(&mut rl, &thread, frame_counter, &game_state);
     }
     Ok(())
 }

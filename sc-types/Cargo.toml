@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-raylib = "3.7.0"
+raylib = { version = "5.0.0", path = "../../raylib-rs/raylib" }
 rmp-serde = "1.1.2"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_derive = "1.0.197"
