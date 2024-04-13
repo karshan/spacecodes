@@ -80,11 +80,14 @@ float calcAO( in vec3 pos, in vec3 nor )
     return clamp( 1.0 - 3.0*occ, 0.0, 1.0 ) * (0.5+0.5*nor.z);
 }
 
-vec3 ComputePBR()
+vec4 ComputePBR()
 {
     vec3 albedo = albedoColor.rgb;
+    float albedoAlpha = albedoColor.a;
     if (useTexAlbedo == 1) {
-        albedo = texture(albedoMap,vec2(fragTexCoord.x*tiling.x + offset.x, fragTexCoord.y*tiling.y + offset.y)).rgb;
+        vec4 albedoRGBA = texture(albedoMap,vec2(fragTexCoord.x*tiling.x + offset.x, fragTexCoord.y*tiling.y + offset.y)).rgba;
+        albedo = albedoRGBA.rgb;
+        albedoAlpha = albedoRGBA.a;
         albedo = vec3(albedoColor.x*albedo.x, albedoColor.y*albedo.y, albedoColor.z*albedo.z);
     }
 
@@ -124,12 +127,13 @@ vec3 ComputePBR()
     }
     // float t = length(viewPos - fragPosition);
     // lightAccum = mix( lightAccum, vec3(0.7,0.7,0.9), 1.0-exp( -0.0001*t*t*t ) );
-    return lightAccum + emissive;
+    return vec4(lightAccum + emissive, albedoAlpha);
 }
 
 void main()
 {
-    vec3 color = ComputePBR();
+    vec4 color4 = ComputePBR();
+    vec3 color = color4.rgb;
 
     // HDR tonemapping
     color = pow(color, color + vec3(1.0));
@@ -137,5 +141,5 @@ void main()
     // Gamma correction
     color = pow(color, vec3(1.0/2.2));
 
-    finalColor = vec4(color, 1.0);
+    finalColor = vec4(color, color4.a);
 }

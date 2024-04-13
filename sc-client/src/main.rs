@@ -506,10 +506,11 @@ fn main() -> std::io::Result<()> {
         Vector2::new(v3.x, v3.y)
     }
     let start_time = Instant::now();
+    let mut zoom = false;
     while !rl.window_should_close() {
         let raw_mouse_position = rl.get_mouse_position();
-        let mouse_position = vec2(Renderer::screen2world(raw_mouse_position, rl.get_screen_width() as f64, rl.get_screen_height() as f64));
-        let fps = rl.get_fps();
+        let mouse_position = Renderer::screen2world(raw_mouse_position, rl.get_screen_width() as f64, rl.get_screen_height() as f64, zoom);
+        let rounded_mouse_pos = Vector2::new(mouse_position.x.round(), mouse_position.y.round());
 
         state = match state {
             ClientState::SendHello => {
@@ -644,6 +645,9 @@ fn main() -> std::io::Result<()> {
                                         start_message_path = true
                                     }
                                 },
+                                KeyboardKey::KEY_Z => {
+                                    zoom = !zoom;
+                                }
                                 KeyboardKey::KEY_W => {
                                     if game_state.sub_selection == Some(SubSelection::Ship) {
                                         if game_state.gold[p_id] < INTERCEPT_COST {
@@ -672,25 +676,6 @@ fn main() -> std::io::Result<()> {
                             }
                         }
                         None => break
-                    }
-                }
-
-                // TODO && contains_point(SHOP_AREA, mouse_position)
-                if shop_open && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                    if let Some(shop_item) = shop.click(mouse_position) {
-                        match shop_item {
-                            ShopItem::Item(i) => {
-                                if game_state.gold[p_id] >= i.cost() {
-                                    unsent_pkt.push(GameCommand::BuyItem(i))
-                                }
-                            },
-                            ShopItem::Upgrade(u) => {
-                                if !game_state.upgrades[p_id].contains(&u) &&
-                                        game_state.gold[p_id] >= u.cost() {
-                                    unsent_pkt.push(GameCommand::BuyUpgrade(u))
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -751,7 +736,7 @@ fn main() -> std::io::Result<()> {
                         } else {
                             if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
                                 MouseState::Path(path, !y_first)
-                            } else if PLAY_AREA.contains_point(&mouse_position) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+                            } else if PLAY_AREA.contains_point(&rounded_mouse_pos) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
                                 let p = path[path.len() - 1];
                                 let m: Vector2;
                                 if y_first {
@@ -784,10 +769,10 @@ fn main() -> std::io::Result<()> {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                             MouseState::None
                         } else if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-                            if PLAY_AREA.contains_point(&mouse_position) &&
-                                    !game_state.other_units.iter().any(|other_u| intercept_inside_bubble(other_u, &Interception { start_frame: 0, pos: mouse_position, vertical: vertical, player_id: 0 })) &&
+                            if PLAY_AREA.contains_point(&vec2(mouse_position)) &&
+                                    !game_state.other_units.iter().any(|other_u| intercept_inside_bubble(other_u, &Interception { start_frame: 0, pos: vec2(mouse_position), vertical: vertical, player_id: 0 })) &&
                                     game_state.gold[p_id] >= INTERCEPT_COST {
-                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: mouse_position, vertical: vertical }));
+                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: vec2(mouse_position), vertical: vertical }));
                                 rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                                 MouseState::WaitReleaseLButton
                             } else {
@@ -918,7 +903,7 @@ fn main() -> std::io::Result<()> {
             },
         };
 
-        render.render(&mut rl, &thread, frame_counter, p_id, &game_state, mouse_position, &mouse_state, &state, &NetInfo { game_ps: &game_ps, waiting_avg: &waiting_avg, my_frame_delay });
+        render.render(&mut rl, &thread, frame_counter, p_id, &game_state, mouse_position, &mouse_state, &state, zoom, &NetInfo { game_ps: &game_ps, waiting_avg: &waiting_avg, my_frame_delay });
     }
     Ok(())
 }

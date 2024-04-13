@@ -78,6 +78,7 @@ pub struct Renderer {
     lights: Vec<Light>,
     background_color: Color,
     floor: Model,
+    plane: Model,
     cube: Model,
     xtr: Texture2D,
 }
@@ -121,6 +122,10 @@ impl Renderer {
         floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &xtr_tile);
         floor.materials_mut()[0].shader = shader.clone();
         floor.set_transform(&(Matrix::translate(0.0, 0.0, 0.0) * Matrix::rotate_x(PI/2.0)));
+
+        let mut plane = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_plane(&thread, 1.0, 1.0, 4, 3).make_weak() }).unwrap();
+        plane.materials_mut()[0].shader = shader.clone();
+        plane.set_transform(&(Matrix::translate(0.0, 0.0, 0.0) * Matrix::rotate_x(PI/2.0)));
     
         let cube_pos_loc = shader.get_shader_location("cubePos");
         let cube_size = Vector3::new(0.5, 0.5, 0.5);
@@ -140,31 +145,52 @@ impl Renderer {
             lights: lights,
             background_color: background_color,
             floor: floor,
+            plane: plane,
             cube: cube,
             xtr: xtr_tile,
         }
     }
 
-    pub fn iso_proj(screen_width: f64, screen_height: f64) -> Matrix {
+    pub fn iso_proj(screen_width: f64, screen_height: f64, zoom: bool) -> Matrix {
         let aspect = screen_width/screen_height;
     
-        let clip = 14f64;
-        Matrix::ortho(-clip * aspect, clip * aspect, -clip, clip, -clip, clip) *
-            Matrix::rotate_x(-35.264 * 2.0 * PI/360.0) * Matrix::rotate_z(PI/4.0)
+        let clip = if zoom { 5f64 } else { 18f64 };
+        Matrix::ortho(-clip, clip, -clip / aspect, clip / aspect, -clip, clip) *
+            Matrix::rotate_x(-(1.0/3f32.sqrt()).acos()) * Matrix::rotate_z(PI/4.0)
     }
     
-    pub fn screen2world(raw_mouse_position: Vector2, screen_width: f64, screen_height: f64) -> Vector3 {
-        let screen2world_mat = Renderer::iso_proj(screen_width, screen_height).inverted() *
+    pub fn screen2world(raw_mouse_position: Vector2, screen_width: f64, screen_height: f64, zoom: bool) -> Vector3 {
+        let screen2world_mat = Renderer::iso_proj(screen_width, screen_height, zoom).inverted() *
         Matrix::translate(-1.0, 1.0, 0.0) *
         Matrix::scale(2.0/screen_width as f32, -2.0/screen_height as f32, 1.0);
         let mut mouse_position = Vector3::new(raw_mouse_position.x, raw_mouse_position.y, 0f32).transform_with(screen2world_mat);
-        mouse_position.x += mouse_position.z/2.0;
-        mouse_position.y += mouse_position.z/2.0;
+        mouse_position.x += mouse_position.z;
+        mouse_position.y += mouse_position.z;
         mouse_position.z = 0.0;
         mouse_position
     }
+
+    fn draw_cube_outline<'a>(self: &mut Self, _3d: &mut RaylibMode3D<'a, RaylibDrawHandle>, pos: Vector3, highlight_color: Color, thickness: f32) {
+        let z_thickness = thickness;
+        self.plane.set_transform(&(Matrix::translate(0.0, 0.25 + thickness/2.0, 0.75) * Matrix::scale(0.5, thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
+        _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
+        self.plane.set_transform(&(Matrix::translate(0.25 + thickness/2.0, thickness/2.0, 0.75) * Matrix::scale(thickness, 0.5 + thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
+        _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
+
+        self.plane.set_transform(&(Matrix::translate(-0.25, 0.25 + thickness/2.0, 0.5) * Matrix::scale(1.0, thickness, 0.5) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
+
+        self.plane.set_transform(&(Matrix::translate(0.25 + thickness/2.0, -0.25, 0.5) * Matrix::scale(thickness, 1.0, 0.5) * Matrix::rotate_z(PI/2.0) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
+
+        self.plane.set_transform(&(Matrix::translate(0.0 + thickness/2.0, -0.25, 0.25 - z_thickness/2.0) * Matrix::scale(0.5 + thickness, 1.0, z_thickness) * Matrix::rotate_z(PI/2.0) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
+
+        self.plane.set_transform(&(Matrix::translate(-0.25, thickness/2.0, 0.25 - z_thickness/2.0) * Matrix::scale(0.5, 0.5 + thickness, z_thickness) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
+    }
     
-    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState, mouse_position: Vector2, mouse_state: &MouseState, state: &ClientState, net_info: &NetInfo) {
+    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo) {
         let ctr = frame_counter;
         let screen_width = rl.get_screen_width() as f64;
         let screen_height = rl.get_screen_height() as f64;
@@ -177,8 +203,9 @@ impl Renderer {
         }
     
         let mut _d = rl.begin_drawing(&thread);
-        let mut _3d = _d.begin_mode3D(Camera3D::orthographic(Vector3::new(2.0, 2.0, 6.0), Vector3::zero(), Vector3::new(0.0, 1.0, 0.0), 45.0));
-        _3d.set_matrix_modelview(&thread, Renderer::iso_proj(screen_width, screen_height));
+        let iso_dist = 1.0/3f32.sqrt();
+        let mut _3d = _d.begin_mode3D(Camera3D::orthographic(Vector3::new(-iso_dist, -iso_dist, iso_dist), Vector3::zero(), Vector3::new(0.0, 1.0, 0.0), 45.0));
+        _3d.set_matrix_modelview(&thread, Renderer::iso_proj(screen_width, screen_height, zoom));
         _3d.set_matrix_projection(&thread, Matrix::identity());
         
         _3d.clear_background(self.background_color);
@@ -202,6 +229,7 @@ impl Renderer {
         let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
         self.cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
         _3d.draw_model(&self.cube, vec3(*ship(0), 0.5), 1.0, message_color(0));
+
         _3d.draw_cube_wires(vec3(*ship(0), 0.5), 0.5, 0.5, 0.5, message_color(0));
 
         self.cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
@@ -213,9 +241,11 @@ impl Renderer {
         _3d.draw_cube(vec3(*station(0), 0.25), 0.1, 0.1, 0.5, ship_color(0).alpha(0.5));
         _3d.draw_cube(vec3(*station(1), 0.25), 0.1, 0.1, 0.5, ship_color(1).alpha(0.5));
 
-        // TODO get from game_state
+        if game_state.sub_selection == Some(SubSelection::Ship) {
+            self.draw_cube_outline(&mut _3d, vec3(*ship(p_id), 0.0), Color::from_hex("00ff00").unwrap(), 0.15);
+        }
+
         let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, 0.5)).collect::<Vec<Vector3>>();
-        // let cubes = [vec3(game_state.my_units.len(), ), Vector3::new(3.0, 3.0, 0.5)];
         if (cubes.len() <= 20) {
             self.shader.set_shader_value_v(self.shader.get_shader_location("cubePos"), cubes.as_slice());
             self.shader.set_shader_value(self.shader.get_shader_location("numCubes"), cubes.len() as i32);
@@ -223,7 +253,6 @@ impl Renderer {
             self.shader.set_shader_value(self.shader.get_shader_location("numCubes"), 0);
         }
         for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
-            // Color::from_hex("83c5be").unwrap()
             _3d.draw_model(&self.cube, vec3(u.pos, 0.5), 1.0, message_color(u.player_id));
         }
 
@@ -249,7 +278,7 @@ impl Renderer {
         if let MouseState::Drag(start_pos) = mouse_state {
             let selection_pos = Vector2 { x: start_pos.x.min(raw_mouse_position.x), y: start_pos.y.min(raw_mouse_position.y) };
             let selection_size = Vector2 { x: (start_pos.x - raw_mouse_position.x).abs(), y: (start_pos.y - raw_mouse_position.y).abs() };
-            _d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::GREEN);
+            _d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::from_hex("00ff00").unwrap());
         }
 
         let text_size = screen_height as f32/50.0;
@@ -261,6 +290,8 @@ impl Renderer {
         _d.draw_text(&format!("fps/g: {}/{}", fps, net_info.game_ps.get_hz().round()), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
         text_pos += gap;
         _d.draw_text(&format!("w/1%/fd: {}/{}/{}", (net_info.waiting_avg.avg * 1000f64).round(), (net_info.waiting_avg.one_percent_max() * 1000f64).round(), net_info.my_frame_delay), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
+        text_pos += gap;
+        _d.draw_text(&format!("m: {}, {}, {}", mouse_position.x, mouse_position.y, mouse_position.z), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
 
         text_pos = Vector2::new(20.0, screen_height as f32) - gap.scale_by(6.0);
         _d.draw_text(&format!("Gold: {}/{}", game_state.gold[p_id].round(), game_state.gold[(p_id + 1) % 2].round()), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
