@@ -10,6 +10,7 @@ raylib = { version = "5.0.0", path = "../../raylib-rs/raylib" }
 sc-types = { path = "../sc-types" }
 serde = "1.0.197"
 rmp-serde = "1.1.2"
+serde_json = "1.0.115"
 num-traits = "0.2.18"
 crc32fast = "1.4.0"
 rand_chacha = "0.3.1"

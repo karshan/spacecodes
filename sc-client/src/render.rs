@@ -2,6 +2,7 @@ use std::f32::consts::PI;
 use raylib::prelude::*;
 use sc_types::*;
 use sc_types::constants::*;
+use serde_json::Value;
 
 use crate::{ClientState, MouseState, NetInfo};
 
@@ -211,6 +212,14 @@ impl Renderer {
     }
     
     pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo) {
+        let constants: Value = serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null);
+        let get_p_color = |s: &str, idx: usize| -> Color {
+            let hex: &str = (|| {
+                constants.get(s)?.as_array()?.get(idx)?.as_str()
+            })().unwrap_or("000000");
+            Color::from_hex(hex).unwrap()
+        };
+
         let ctr = frame_counter;
         let screen_width = rl.get_screen_width() as f64;
         let screen_height = rl.get_screen_height() as f64;
@@ -243,13 +252,13 @@ impl Renderer {
         // TODO add these to cubePos so they have ao shadows
         let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
         self.cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
-        _3d.draw_model(&self.cube, vec3(*ship(0), 0.5), 1.0, message_color(0));
+        _3d.draw_model(&self.cube, vec3(*ship(0), 0.5), 1.0, get_p_color("message_color", 0));
 
-        _3d.draw_cube_wires(vec3(*ship(0), 0.5), 0.5, 0.5, 0.5, message_color(0));
+        _3d.draw_cube_wires(vec3(*ship(0), 0.5), 0.5, 0.5, 0.5, get_p_color("message_color", 0));
 
         self.cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
-        _3d.draw_model(&self.cube, vec3(*ship(1), 0.5), 1.0, message_color(1));
-        _3d.draw_cube_wires(vec3(*ship(1), 0.5), 0.5, 0.5, 0.5, message_color(1));
+        _3d.draw_model(&self.cube, vec3(*ship(1), 0.5), 1.0, get_p_color("message_color", 1));
+        _3d.draw_cube_wires(vec3(*ship(1), 0.5), 0.5, 0.5, 0.5, get_p_color("message_color", 1));
 
         self.cube.set_transform(&Matrix::identity());
 
