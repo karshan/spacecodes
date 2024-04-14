@@ -198,21 +198,22 @@ impl Renderer {
 
     fn draw_cube_outline<'a>(self: &mut Self, _3d: &mut RaylibMode3D<'a, RaylibDrawHandle>, pos: Vector3, cube_size: f32, cube_z_offset: f32, highlight_color: Color, thickness: f32) {
         let z_thickness = thickness;
-        self.plane.set_transform(&(Matrix::translate(0.0, cube_size/2.0 + thickness/2.0, cube_z_offset + cube_size/2.0) * Matrix::scale(cube_size, thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
+        let bring_front = Matrix::translate(-1.0, -1.0, 1.0);
+        self.plane.set_transform(&(bring_front * Matrix::translate(0.0, cube_size/2.0 + thickness/2.0, cube_z_offset + cube_size/2.0) * Matrix::scale(cube_size, thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
-        self.plane.set_transform(&(Matrix::translate(cube_size/2.0 + thickness/2.0, thickness/2.0, cube_z_offset + cube_size/2.0) * Matrix::scale(thickness, cube_size + thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
-        _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
-
-        self.plane.set_transform(&(Matrix::translate(-cube_size/2.0, cube_size/2.0 + thickness/2.0, cube_z_offset) * Matrix::scale(1.0, thickness, cube_size) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        self.plane.set_transform(&(bring_front * Matrix::translate(cube_size/2.0 + thickness/2.0, thickness/2.0, cube_z_offset + cube_size/2.0) * Matrix::scale(thickness, cube_size + thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
 
-        self.plane.set_transform(&(Matrix::translate(cube_size/2.0 + thickness/2.0, -cube_size/2.0, cube_z_offset) * Matrix::scale(thickness, 1.0, cube_size) * Matrix::rotate_z(PI/2.0) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        self.plane.set_transform(&(bring_front * Matrix::translate(-cube_size/2.0, cube_size/2.0 + thickness/2.0, cube_z_offset) * Matrix::scale(1.0, thickness, cube_size) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
 
-        self.plane.set_transform(&(Matrix::translate(0.0 + thickness/2.0, -cube_size/2.0, cube_z_offset - cube_size/2.0 - z_thickness/2.0) * Matrix::scale(cube_size + thickness, 1.0, z_thickness) * Matrix::rotate_z(PI/2.0) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        self.plane.set_transform(&(bring_front * Matrix::translate(cube_size/2.0 + thickness/2.0, -cube_size/2.0, cube_z_offset) * Matrix::scale(thickness, 1.0, cube_size) * Matrix::rotate_z(PI/2.0) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
 
-        self.plane.set_transform(&(Matrix::translate(-cube_size/2.0, thickness/2.0, cube_z_offset - cube_size/2.0 - z_thickness/2.0) * Matrix::scale(cube_size, cube_size + thickness, z_thickness) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        self.plane.set_transform(&(bring_front * Matrix::translate(0.0 + thickness/2.0, -cube_size/2.0, cube_z_offset - cube_size/2.0 - z_thickness/2.0) * Matrix::scale(cube_size + thickness, 1.0, z_thickness) * Matrix::rotate_z(PI/2.0) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
+
+        self.plane.set_transform(&(bring_front * Matrix::translate(-cube_size/2.0, thickness/2.0, cube_z_offset - cube_size/2.0 - z_thickness/2.0) * Matrix::scale(cube_size, cube_size + thickness, z_thickness) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
     }
     
@@ -298,11 +299,8 @@ impl Renderer {
         cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
         _3d.draw_model(&cube, vec3(*ship(0), cube_z_offset), 1.0, get_p_color("message_color", 0));
 
-        _3d.draw_cube_wires(vec3(*ship(0), cube_z_offset), cube_size.x, cube_size.y, cube_size.z, get_p_color("message_color", 0));
-
         cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
         _3d.draw_model(&cube, vec3(*ship(1), cube_z_offset), 1.0, get_p_color("message_color", 1));
-        _3d.draw_cube_wires(vec3(*ship(1), cube_z_offset), cube_size.x, cube_size.y, cube_size.z, get_p_color("message_color", 1));
 
         cube.set_transform(&Matrix::identity());
 
