@@ -73,6 +73,13 @@ fn vec3(v2: Vector2, z: f32) -> Vector3 {
     Vector3::new(v2.x, v2.y, z)
 }
 
+pub struct ShaderLocs {
+    use_ao: i32,
+    use_tex_albedo: i32,
+    num_cubes: i32,
+    cube_pos: i32
+}
+
 pub struct Renderer {
     shader: Shader,
     lights: Vec<Light>,
@@ -81,6 +88,7 @@ pub struct Renderer {
     plane: Model,
     cube: Model,
     xtr: Texture2D,
+    locs: ShaderLocs,
 }
 
 impl Renderer {
@@ -109,6 +117,10 @@ impl Renderer {
         lights[1].enabled = 0;
         lights[2].enabled = 0;
         lights[3].enabled = 0;
+
+        for i in 0..4 {
+            update_light(&mut shader, &lights[i])
+        }
     
         let background_color = Color::from_hex("264653").unwrap();
     
@@ -118,7 +130,7 @@ impl Renderer {
         
         let w = 1.0;
         let h = 1.0;
-        let mut floor = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_plane(&thread, w, h, 4, 3).make_weak() }).unwrap();
+        let mut floor = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_plane(&thread, w, h, 1, 1).make_weak() }).unwrap();
         floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &xtr_tile);
         floor.materials_mut()[0].shader = shader.clone();
         floor.set_transform(&(Matrix::translate(0.0, 0.0, 0.0) * Matrix::rotate_x(PI/2.0)));
@@ -140,14 +152,22 @@ impl Renderer {
         shader.set_shader_value(shader.get_shader_location("useTexNormal"), 0);
         shader.set_shader_value(shader.get_shader_location("useTexMRA"), 0);
         shader.set_shader_value(shader.get_shader_location("useTexEmissive"), 0);
+        shader.set_shader_value(shader.locs()[ShaderLocationIndex::SHADER_LOC_VECTOR_VIEW as usize], Vector3::new(0.0, 0.0, 2.0f32.sqrt()));
         Renderer {
-            shader: shader,
             lights: lights,
             background_color: background_color,
             floor: floor,
             plane: plane,
             cube: cube,
             xtr: xtr_tile,
+            locs: ShaderLocs {
+                use_tex_albedo: shader.get_shader_location("useTexAlbedo"),
+                use_ao: shader.get_shader_location("useAo"),
+                cube_pos: shader.get_shader_location("cubePos"),
+                num_cubes: shader.get_shader_location("numCubes")
+            },
+            shader: shader,
+
         }
     }
 
@@ -197,11 +217,6 @@ impl Renderer {
         let fps = rl.get_fps();
         let raw_mouse_position = rl.get_mouse_position();
     
-        self.shader.set_shader_value(self.shader.locs()[ShaderLocationIndex::SHADER_LOC_VECTOR_VIEW as usize], Vector3::new(0.0, 0.0, 2.0f32.sqrt()));
-        for i in 0..4 {
-            update_light(&mut self.shader, &self.lights[i])
-        }
-    
         let mut _d = rl.begin_drawing(&thread);
         let iso_dist = 1.0/3f32.sqrt();
         let mut _3d = _d.begin_mode3D(Camera3D::orthographic(Vector3::new(-iso_dist, -iso_dist, iso_dist), Vector3::zero(), Vector3::new(0.0, 1.0, 0.0), 45.0));
@@ -210,8 +225,8 @@ impl Renderer {
         
         _3d.clear_background(self.background_color);
     
-        self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 1);
-        self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 1);
+        self.shader.set_shader_value(self.locs.use_tex_albedo, 1);
+        self.shader.set_shader_value(self.locs.use_ao, 1);
         for x in -12..=12 {
             for y in -12..=12 {
                 let mut c = Color::from_hex("d9d9d9").unwrap();
@@ -222,8 +237,8 @@ impl Renderer {
                 _3d.draw_model(&self.floor, Vector3::zero(), 1.0, c);
             }
         }
-        self.shader.set_shader_value(self.shader.get_shader_location("useTexAlbedo"), 0);
-        self.shader.set_shader_value(self.shader.get_shader_location("useAo"), 0);
+        self.shader.set_shader_value(self.locs.use_tex_albedo, 0);
+        self.shader.set_shader_value(self.locs.use_ao, 0);
 
         // TODO add these to cubePos so they have ao shadows
         let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
@@ -247,10 +262,10 @@ impl Renderer {
 
         let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, 0.5)).collect::<Vec<Vector3>>();
         if (cubes.len() <= 20) {
-            self.shader.set_shader_value_v(self.shader.get_shader_location("cubePos"), cubes.as_slice());
-            self.shader.set_shader_value(self.shader.get_shader_location("numCubes"), cubes.len() as i32);
+            self.shader.set_shader_value_v(self.locs.cube_pos, cubes.as_slice());
+            self.shader.set_shader_value(self.locs.num_cubes, cubes.len() as i32);
         } else {
-            self.shader.set_shader_value(self.shader.get_shader_location("numCubes"), 0);
+            self.shader.set_shader_value(self.locs.num_cubes, 0);
         }
         for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
             _3d.draw_model(&self.cube, vec3(u.pos, 0.5), 1.0, message_color(u.player_id));
