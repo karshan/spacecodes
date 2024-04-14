@@ -78,7 +78,8 @@ pub struct ShaderLocs {
     use_ao: i32,
     use_tex_albedo: i32,
     num_cubes: i32,
-    cube_pos: i32
+    cube_pos: i32,
+    cube_size: i32
 }
 
 pub struct Renderer {
@@ -87,7 +88,6 @@ pub struct Renderer {
     background_color: Color,
     floor: Model,
     plane: Model,
-    cube: Model,
     xtr: Texture2D,
     locs: ShaderLocs,
 }
@@ -140,12 +140,6 @@ impl Renderer {
         plane.materials_mut()[0].shader = shader.clone();
         plane.set_transform(&(Matrix::translate(0.0, 0.0, 0.0) * Matrix::rotate_x(PI/2.0)));
     
-        let cube_pos_loc = shader.get_shader_location("cubePos");
-        let cube_size = Vector3::new(0.5, 0.5, 0.5);
-        shader.set_shader_value(shader.get_shader_location("cubeSize"), cube_size);
-        let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, cube_size.x, cube_size.y, cube_size.z).make_weak() }).unwrap();
-        cube.materials_mut()[0].shader = shader.clone();
-    
         let mut ctr = 0;
         let mut cube_pos = Vector3::new(0.0, 0.0, 0.5);
         let mut cube_dir = Vector3::new(1.0, 0.0, 0.0);
@@ -159,12 +153,12 @@ impl Renderer {
             background_color: background_color,
             floor: floor,
             plane: plane,
-            cube: cube,
             xtr: xtr_tile,
             locs: ShaderLocs {
                 use_tex_albedo: shader.get_shader_location("useTexAlbedo"),
                 use_ao: shader.get_shader_location("useAo"),
                 cube_pos: shader.get_shader_location("cubePos"),
+                cube_size: shader.get_shader_location("cubeSize"),
                 num_cubes: shader.get_shader_location("numCubes")
             },
             shader: shader,
@@ -175,7 +169,7 @@ impl Renderer {
     pub fn iso_proj(screen_width: f64, screen_height: f64, zoom: bool) -> Matrix {
         let aspect = screen_width/screen_height;
     
-        let clip = if zoom { 5f64 } else { 18f64 };
+        let clip = if zoom { 10f64 } else { 18f64 };
         Matrix::ortho(-clip, clip, -clip / aspect, clip / aspect, -clip, clip) *
             Matrix::rotate_x(-(1.0/3f32.sqrt()).acos()) * Matrix::rotate_z(PI/4.0)
     }
@@ -191,23 +185,23 @@ impl Renderer {
         mouse_position
     }
 
-    fn draw_cube_outline<'a>(self: &mut Self, _3d: &mut RaylibMode3D<'a, RaylibDrawHandle>, pos: Vector3, highlight_color: Color, thickness: f32) {
+    fn draw_cube_outline<'a>(self: &mut Self, _3d: &mut RaylibMode3D<'a, RaylibDrawHandle>, pos: Vector3, cube_size: f32, cube_z_offset: f32, highlight_color: Color, thickness: f32) {
         let z_thickness = thickness;
-        self.plane.set_transform(&(Matrix::translate(0.0, 0.25 + thickness/2.0, 0.75) * Matrix::scale(0.5, thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
+        self.plane.set_transform(&(Matrix::translate(0.0, cube_size/2.0 + thickness/2.0, cube_z_offset + cube_size/2.0) * Matrix::scale(cube_size, thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
-        self.plane.set_transform(&(Matrix::translate(0.25 + thickness/2.0, thickness/2.0, 0.75) * Matrix::scale(thickness, 0.5 + thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
-        _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
-
-        self.plane.set_transform(&(Matrix::translate(-0.25, 0.25 + thickness/2.0, 0.5) * Matrix::scale(1.0, thickness, 0.5) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        self.plane.set_transform(&(Matrix::translate(cube_size/2.0 + thickness/2.0, thickness/2.0, cube_z_offset + cube_size/2.0) * Matrix::scale(thickness, cube_size + thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
 
-        self.plane.set_transform(&(Matrix::translate(0.25 + thickness/2.0, -0.25, 0.5) * Matrix::scale(thickness, 1.0, 0.5) * Matrix::rotate_z(PI/2.0) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        self.plane.set_transform(&(Matrix::translate(-cube_size/2.0, cube_size/2.0 + thickness/2.0, cube_z_offset) * Matrix::scale(1.0, thickness, cube_size) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
 
-        self.plane.set_transform(&(Matrix::translate(0.0 + thickness/2.0, -0.25, 0.25 - z_thickness/2.0) * Matrix::scale(0.5 + thickness, 1.0, z_thickness) * Matrix::rotate_z(PI/2.0) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        self.plane.set_transform(&(Matrix::translate(cube_size/2.0 + thickness/2.0, -cube_size/2.0, cube_z_offset) * Matrix::scale(thickness, 1.0, cube_size) * Matrix::rotate_z(PI/2.0) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
 
-        self.plane.set_transform(&(Matrix::translate(-0.25, thickness/2.0, 0.25 - z_thickness/2.0) * Matrix::scale(0.5, 0.5 + thickness, z_thickness) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        self.plane.set_transform(&(Matrix::translate(0.0 + thickness/2.0, -cube_size/2.0, cube_z_offset - cube_size/2.0 - z_thickness/2.0) * Matrix::scale(cube_size + thickness, 1.0, z_thickness) * Matrix::rotate_z(PI/2.0) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
+        _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
+
+        self.plane.set_transform(&(Matrix::translate(-cube_size/2.0, thickness/2.0, cube_z_offset - cube_size/2.0 - z_thickness/2.0) * Matrix::scale(cube_size, cube_size + thickness, z_thickness) * Matrix::rotate_y(-PI/2.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
     }
     
@@ -219,16 +213,31 @@ impl Renderer {
             })().unwrap_or("000000");
             Color::from_hex(hex).unwrap()
         };
+        let get_color = |s: &str| -> Color {
+            let hex: &str = (|| {
+                constants.get(s)?.as_str()
+            })().unwrap_or("000000");
+            Color::from_hex(hex).unwrap()
+        };
+        let get_f32 = |s: &str| -> f32 {
+            (|| {
+                constants.get(s)?.as_f64()
+            })().unwrap_or(0.0) as f32
+        };
 
-        let ctr = frame_counter;
         let screen_width = rl.get_screen_width() as f64;
         let screen_height = rl.get_screen_height() as f64;
         let fps = rl.get_fps();
         let raw_mouse_position = rl.get_mouse_position();
-    
+
+        let cube_side_len = get_f32("cube_size");
+        let cube_size = Vector3::new(cube_side_len, cube_side_len, cube_side_len);
+        self.shader.set_shader_value(self.locs.cube_size, cube_size);
+        let cube_z_offset = get_f32("cube_z_offset");
+        let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, cube_size.x, cube_size.y, cube_size.z).make_weak() }).unwrap();
+
         let mut _d = rl.begin_drawing(&thread);
-        let iso_dist = 1.0/3f32.sqrt();
-        let mut _3d = _d.begin_mode3D(Camera3D::orthographic(Vector3::new(-iso_dist, -iso_dist, iso_dist), Vector3::zero(), Vector3::new(0.0, 1.0, 0.0), 45.0));
+        let mut _3d = _d.begin_mode3D(Camera3D::orthographic(Vector3::zero(), Vector3::zero(), Vector3::zero(), 0.0));
         _3d.set_matrix_modelview(&thread, Renderer::iso_proj(screen_width, screen_height, zoom));
         _3d.set_matrix_projection(&thread, Matrix::identity());
         
@@ -238,9 +247,9 @@ impl Renderer {
         self.shader.set_shader_value(self.locs.use_ao, 1);
         for x in -12..=12 {
             for y in -12..=12 {
-                let mut c = Color::from_hex("d9d9d9").unwrap();
+                let mut c = get_color("tile_tint");
                 if (mouse_position.x.round() == x as f32 && mouse_position.y.round() == y as f32) {
-                    c = Color::WHITE;
+                    c = get_color("tile_highlight_tint");
                 }
                 self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
                 _3d.draw_model(&self.floor, Vector3::zero(), 1.0, c);
@@ -249,27 +258,29 @@ impl Renderer {
         self.shader.set_shader_value(self.locs.use_tex_albedo, 0);
         self.shader.set_shader_value(self.locs.use_ao, 0);
 
+        cube.materials_mut()[0].shader = self.shader.clone();
+
         // TODO add these to cubePos so they have ao shadows
         let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
-        self.cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
-        _3d.draw_model(&self.cube, vec3(*ship(0), 0.5), 1.0, get_p_color("message_color", 0));
+        cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
+        _3d.draw_model(&cube, vec3(*ship(0), cube_z_offset), 1.0, get_p_color("message_color", 0));
 
-        _3d.draw_cube_wires(vec3(*ship(0), 0.5), 0.5, 0.5, 0.5, get_p_color("message_color", 0));
+        _3d.draw_cube_wires(vec3(*ship(0), cube_z_offset), cube_size.x, cube_size.y, cube_size.z, get_p_color("message_color", 0));
 
-        self.cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
-        _3d.draw_model(&self.cube, vec3(*ship(1), 0.5), 1.0, get_p_color("message_color", 1));
-        _3d.draw_cube_wires(vec3(*ship(1), 0.5), 0.5, 0.5, 0.5, get_p_color("message_color", 1));
+        cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
+        _3d.draw_model(&cube, vec3(*ship(1), cube_z_offset), 1.0, get_p_color("message_color", 1));
+        _3d.draw_cube_wires(vec3(*ship(1), cube_z_offset), cube_size.x, cube_size.y, cube_size.z, get_p_color("message_color", 1));
 
-        self.cube.set_transform(&Matrix::identity());
+        cube.set_transform(&Matrix::identity());
 
         _3d.draw_cube(vec3(*station(0), 0.25), 0.1, 0.1, 0.5, ship_color(0).alpha(0.5));
         _3d.draw_cube(vec3(*station(1), 0.25), 0.1, 0.1, 0.5, ship_color(1).alpha(0.5));
 
         if game_state.sub_selection == Some(SubSelection::Ship) {
-            self.draw_cube_outline(&mut _3d, vec3(*ship(p_id), 0.0), Color::from_hex("00ff00").unwrap(), 0.15);
+            self.draw_cube_outline(&mut _3d, vec3(*ship(p_id), 0.0), cube_side_len, cube_z_offset, get_color("selection"), get_f32("selection_thickness"));
         }
 
-        let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, 0.5)).collect::<Vec<Vector3>>();
+        let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, cube_z_offset)).collect::<Vec<Vector3>>();
         if (cubes.len() <= 20) {
             self.shader.set_shader_value_v(self.locs.cube_pos, cubes.as_slice());
             self.shader.set_shader_value(self.locs.num_cubes, cubes.len() as i32);
@@ -277,7 +288,7 @@ impl Renderer {
             self.shader.set_shader_value(self.locs.num_cubes, 0);
         }
         for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
-            _3d.draw_model(&self.cube, vec3(u.pos, 0.5), 1.0, message_color(u.player_id));
+            _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, get_p_color("message_color", u.player_id));
         }
 
         if let MouseState::Path(path, y_first) = mouse_state {

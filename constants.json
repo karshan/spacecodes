@@ -2,5 +2,11 @@
     "message_color": [
         "2510fd",
         "780000"
-    ]
+    ],
+    "tile_tint": "d9d9d9",
+    "tile_highlight_tint": "ffffff",
+    "selection": "00ff00",
+    "selection_thickness": 0.08,
+    "cube_size": 0.5,
+    "cube_z_offset": 0.5
 }
