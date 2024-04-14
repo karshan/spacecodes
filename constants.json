@@ -8,5 +8,10 @@
     "selection": "00ff00",
     "selection_thickness": 0.08,
     "cube_size": 0.5,
-    "cube_z_offset": 0.5
+    "cube_z_offset": 0.5,
+    "light_pos": [-0.5, -0.6, 0.4],
+    "light_color": [1.30, 1.00, 0.7],
+    "light_mult": 2.2,
+    "use_hdr_tone_map": 1
+
 }

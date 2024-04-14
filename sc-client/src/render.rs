@@ -79,7 +79,9 @@ pub struct ShaderLocs {
     use_tex_albedo: i32,
     num_cubes: i32,
     cube_pos: i32,
-    cube_size: i32
+    cube_size: i32,
+    use_hdr_tone_map: i32,
+    light_mult: i32
 }
 
 pub struct Renderer {
@@ -89,6 +91,7 @@ pub struct Renderer {
     floor: Model,
     plane: Model,
     xtr: Texture2D,
+    sky: Texture2D,
     locs: ShaderLocs,
 }
 
@@ -128,6 +131,11 @@ impl Renderer {
         let mut img = Image::load_image("sc-client/assets/tex4.png").unwrap();
         draw_border(&mut img, background_color);
         let xtr_tile = rl.load_texture_from_image(&thread, &mut img).unwrap();
+
+        let mut sky = Image::load_image("sc-client/assets/sky.png").unwrap();
+        sky.resize(rl.get_screen_width(), rl.get_screen_height());
+        let xtr_sky = rl.load_texture_from_image(&thread, &mut sky).unwrap();
+
         
         let w = 1.0;
         let h = 1.0;
@@ -154,12 +162,15 @@ impl Renderer {
             floor: floor,
             plane: plane,
             xtr: xtr_tile,
+            sky: xtr_sky,
             locs: ShaderLocs {
                 use_tex_albedo: shader.get_shader_location("useTexAlbedo"),
                 use_ao: shader.get_shader_location("useAo"),
                 cube_pos: shader.get_shader_location("cubePos"),
                 cube_size: shader.get_shader_location("cubeSize"),
-                num_cubes: shader.get_shader_location("numCubes")
+                num_cubes: shader.get_shader_location("numCubes"),
+                use_hdr_tone_map: shader.get_shader_location("useHdrToneMap"),
+                light_mult: shader.get_shader_location("lightMult")
             },
             shader: shader,
 
@@ -169,7 +180,7 @@ impl Renderer {
     pub fn iso_proj(screen_width: f64, screen_height: f64, zoom: bool) -> Matrix {
         let aspect = screen_width/screen_height;
     
-        let clip = if zoom { 10f64 } else { 18f64 };
+        let clip = if zoom { 10f64 } else { 19f64 };
         Matrix::ortho(-clip, clip, -clip / aspect, clip / aspect, -clip, clip) *
             Matrix::rotate_x(-(1.0/3f32.sqrt()).acos()) * Matrix::rotate_z(PI/4.0)
     }
@@ -224,6 +235,26 @@ impl Renderer {
                 constants.get(s)?.as_f64()
             })().unwrap_or(0.0) as f32
         };
+        let get_i32 = |s: &str| -> i32 {
+            (|| {
+                constants.get(s)?.as_i64()
+            })().unwrap_or(0) as i32
+        };
+        let get_vec3 = |s: &str| -> Vector3 {
+            (|| {
+                let x = constants.get(s)?.as_array()?.get(0)?.as_f64()?;
+                let y = constants.get(s)?.as_array()?.get(1)?.as_f64()?;
+                let z = constants.get(s)?.as_array()?.get(2)?.as_f64()?;
+                Some(Vector3::new(x as f32, y as f32, z as f32))
+            })().unwrap_or(Vector3::zero())
+        };
+
+        self.lights[0].position = get_vec3("light_pos");
+        let lc = get_vec3("light_color");
+        self.lights[0].color = Vector4::new(lc.x, lc.y, lc.z, 1.0);
+        update_light(&mut self.shader, &self.lights[0]);
+        self.shader.set_shader_value(self.locs.use_hdr_tone_map, get_i32("use_hdr_tone_map"));
+        self.shader.set_shader_value(self.locs.light_mult, get_f32("light_mult"));
 
         let screen_width = rl.get_screen_width() as f64;
         let screen_height = rl.get_screen_height() as f64;
@@ -236,12 +267,14 @@ impl Renderer {
         let cube_z_offset = get_f32("cube_z_offset");
         let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, cube_size.x, cube_size.y, cube_size.z).make_weak() }).unwrap();
 
-        let mut _d = rl.begin_drawing(&thread);
+        let mut _d = rl.begin_drawing(&thread);        
+        _d.clear_background(self.background_color);
+        _d.draw_texture(&self.sky, 0, 0, Color::WHITE);
+
         let mut _3d = _d.begin_mode3D(Camera3D::orthographic(Vector3::zero(), Vector3::zero(), Vector3::zero(), 0.0));
-        _3d.set_matrix_modelview(&thread, Renderer::iso_proj(screen_width, screen_height, zoom));
         _3d.set_matrix_projection(&thread, Matrix::identity());
-        
-        _3d.clear_background(self.background_color);
+        _3d.set_matrix_modelview(&thread, Renderer::iso_proj(screen_width, screen_height, zoom));
+
     
         self.shader.set_shader_value(self.locs.use_tex_albedo, 1);
         self.shader.set_shader_value(self.locs.use_ao, 1);
@@ -277,7 +310,11 @@ impl Renderer {
         _3d.draw_cube(vec3(*station(1), 0.25), 0.1, 0.1, 0.5, ship_color(1).alpha(0.5));
 
         if game_state.sub_selection == Some(SubSelection::Ship) {
+            self.lights[0].enabled = 0;
+            update_light(&mut self.shader, &self.lights[0]);
             self.draw_cube_outline(&mut _3d, vec3(*ship(p_id), 0.0), cube_side_len, cube_z_offset, get_color("selection"), get_f32("selection_thickness"));
+            self.lights[0].enabled = 1;
+            update_light(&mut self.shader, &self.lights[0]);
         }
 
         let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, cube_z_offset)).collect::<Vec<Vector3>>();

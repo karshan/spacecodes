@@ -51,6 +51,9 @@ uniform vec3 cubePos[20];
 uniform vec3 cubeSize;
 uniform int numCubes;
 
+uniform int useHdrToneMap;
+uniform float lightMult;
+
 float sdBox(vec3 p, vec3 b) {
   vec3 q = abs(p) - b;
   return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
@@ -123,11 +126,15 @@ vec4 ComputePBR()
         float diffuse = clamp(dot(N, L), 0.0, 1.0);
         if (useAo == 1)
             diffuse *= occ;
-        lightAccum += (albedo * 2.20 * diffuse * vec3(1.30,1.00,0.70)) * lights[i].enabled; // light color constant
+        lightAccum += (albedo * lightMult * diffuse * lights[i].color.rgb) * lights[i].enabled; // light color constant
     }
     // float t = length(viewPos - fragPosition);
     // lightAccum = mix( lightAccum, vec3(0.7,0.7,0.9), 1.0-exp( -0.0001*t*t*t ) );
-    return vec4(lightAccum + emissive, albedoAlpha);
+    if (lights[0].enabled == 0) {
+        return vec4(albedo, albedoAlpha);
+    } else {
+        return vec4(lightAccum + emissive, albedoAlpha);
+    }
 }
 
 void main()
@@ -136,7 +143,9 @@ void main()
     vec3 color = color4.rgb;
 
     // HDR tonemapping
-    color = pow(color, color + vec3(1.0));
+    if (useHdrToneMap == 1) {
+        color = pow(color, color + vec3(1.0));
+    }
     
     // Gamma correction
     color = pow(color, vec3(1.0/2.2));
