@@ -148,17 +148,21 @@ fn apply_bounties(game_state: &mut GameState, p_id: usize, bounties: HashMap<Bou
     }
 }
 
+fn same_tile(a: Vector2, b: Vector2) -> bool {
+    a.x.round() == b.x.round() && a.y.round() == b.y.round()
+}
+
 fn deliver_messages(game_state: &mut GameState, p_id: usize) {
     let other_id = (p_id + 1) % 2;
 
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
 
-    let my_bounties = game_state.my_units.iter_mut().filter(|u| u.pos == *station(u.player_id))
+    let my_bounties = game_state.my_units.iter_mut().filter(|u| same_tile(u.pos, *station(u.player_id)))
         .map(|u| { u.dead = true; u }).fold(HashMap::new(), |acc, e| hm_add(acc, &e.carrying_bounty));
     apply_bounties(game_state, p_id, my_bounties);
     reap(game_state);
-    let other_bounties = game_state.other_units.iter_mut().filter(|u| u.pos == *station(u.player_id))
+    let other_bounties = game_state.other_units.iter_mut().filter(|u| same_tile(u.pos, *station(u.player_id)))
         .map(|u| { u.dead = true; u }).fold(HashMap::new(), |acc, e| hm_add(acc, &e.carrying_bounty));
     apply_bounties(game_state, other_id, other_bounties);
     game_state.other_units.retain(|u| !u.dead);
@@ -299,15 +303,14 @@ fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
 
         let t_to_spawn = m_t_to_spawn.unwrap_or(p_dist[p_dist.len() - 1].0);
 
-        let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
-        // while !PLAY_AREA.contains(&bounty_rect(&b)) ||
-        //         GAME_MAP.iter().any(|r| r.1.collide(&bounty_rect(&b)) ||
-        //         BLOCKED.iter().any(|r| r.collide(&bounty_rect(&b)))) ||
-        //         (ship(0).center() - b).length() < 150f32 ||
-        //         (ship(1).center() - b).length() < 150f32 ||
-        //         game_state.bounties.iter().any(|existing_b| bounty_rect(&existing_b.pos).collide(&bounty_rect(&b))) {
-        //     b = Vector2::new(rng.gen_range(PLAY_AREA.x..PLAY_AREA.w) as f32, rng.gen_range(PLAY_AREA.x..PLAY_AREA.h) as f32);
-        // }
+        let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..(PLAY_AREA.x + PLAY_AREA.w)) as f32, rng.gen_range(PLAY_AREA.y..(PLAY_AREA.y + PLAY_AREA.h)) as f32);
+        while same_tile(*ship(0), b) ||
+              same_tile(*ship(1), b) ||
+              same_tile(*station(0), b) ||
+              same_tile(*station(1), b) ||
+                game_state.bounties.iter().any(|existing_b| same_tile(existing_b.pos, b)) {
+            b = Vector2::new(rng.gen_range(PLAY_AREA.x..(PLAY_AREA.x + PLAY_AREA.w)) as f32, rng.gen_range(PLAY_AREA.y..(PLAY_AREA.y + PLAY_AREA.h)) as f32);
+        }
         game_state.bounties.push(Bounty { type_: t_to_spawn, amount: t_to_spawn.amount(rng), pos: b });
     } 
 }
@@ -331,15 +334,15 @@ fn collide_bounties(game_state: &mut GameState) {
     };
 
     for b in &game_state.bounties {
-        let m_mine = game_state.my_units.iter_mut().find(|u| u.rect().collide(&bounty_rect(&b.pos)));
-        let m_other = game_state.other_units.iter_mut().find(|u| u.rect().collide(&bounty_rect(&b.pos)));
+        let m_mine = game_state.my_units.iter_mut().find(|u| same_tile(u.pos, b.pos));
+        let m_other = game_state.other_units.iter_mut().find(|u| same_tile(u.pos, b.pos));
         pack_bounty(m_mine, b);
         pack_bounty(m_other, b);
     }
 
     // PERF loop only once
-    game_state.bounties.retain(|b| !game_state.my_units.iter().any(|u| u.rect().collide(&bounty_rect(&b.pos))) &&
-        !game_state.other_units.iter().any(|u| u.rect().collide(&bounty_rect(&b.pos))))
+    game_state.bounties.retain(|b| !game_state.my_units.iter().any(|u| same_tile(u.pos, b.pos)) &&
+        !game_state.other_units.iter().any(|u| same_tile(u.pos, b.pos)))
 }
 
 fn intercept_line(intercept: &Interception) -> [Vector2; 2] {
@@ -444,7 +447,7 @@ fn main() -> std::io::Result<()> {
     }
 
     let (mut rl, thread) = raylib::init()
-        .size(1920, 1080)
+        .size(2560, 1440)
         // .fullscreen()
         .title("Space Codes")
         .msaa_4x()
@@ -589,10 +592,10 @@ fn main() -> std::io::Result<()> {
                 }
             },
             ClientState::Started => {
-                if game_state.bounties.len() >= 25 {
+                if game_state.bounties.len() >= 10 {
                     game_state.spawn_bounties = false;
                 }
-                if game_state.bounties.len() < 15 {
+                if game_state.bounties.len() < 6 {
                     game_state.spawn_bounties = true;
                 }
 
@@ -645,20 +648,18 @@ fn main() -> std::io::Result<()> {
                                     }
                                 },
                                 KeyboardKey::KEY_Q => {
-                                    if game_state.sub_selection == Some(SubSelection::Ship) && game_state.spawn_cooldown[p_id] <= 0 {
+                                    if game_state.spawn_cooldown[p_id] <= 0 {
                                         start_message_path = true
                                     }
                                 },
-                                KeyboardKey::KEY_Z => {
+                                KeyboardKey::KEY_P => {
                                     zoom = !zoom;
                                 }
                                 KeyboardKey::KEY_W => {
-                                    if game_state.sub_selection == Some(SubSelection::Ship) {
-                                        if game_state.gold[p_id] < INTERCEPT_COST {
-                                            intercept_err = true;
-                                        } else {
-                                            start_intercept = true;
-                                        }
+                                    if game_state.gold[p_id] < INTERCEPT_COST {
+                                        intercept_err = true;
+                                    } else {
+                                        start_intercept = true;
                                     }
                                 }
                                 KeyboardKey::KEY_S => { shop_open = !shop_open }

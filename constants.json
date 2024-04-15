@@ -1,17 +1,33 @@
 {
     "message_color": [
-        "2510fd",
-        "780000"
+        "48bac8",
+        "e37a80"
     ],
-    "tile_tint": "ffffff",
-    "tile_highlight_tint": "ffffff",
+    "message_emission": [
+        "ffffff",
+        "e37a80"
+    ],
+    "message_e_power0": 0.3,
+    "message_e_power1": 0.5,
+    "blink": "ef233c",
+    "lumber": "99582a",
+    "gold": "fb8500",
+    "fuel": "ffffff",
+    "bounty_z": 0.15,
+    "bounty_r": 0.1,
+    "tile_tint": "70e543",
+    "tile_highlight_tint": "d9d9d9",
     "selection": "00ff00",
-    "selection_thickness": 0.08,
+    "selection_thickness": 0.03,
     "cube_size": 0.5,
     "cube_z_offset": 0.5,
-    "light_pos": [-0.5, -0.6, 0.4],
-    "light_color": [1.30, 1.00, 0.7],
-    "light_mult": 2.2,
-    "use_hdr_tone_map": 1
-
+    "light_pos": [-0.75, -0.55, 1],
+    "light_color": [1, 1.00, 1],
+    "light_mult": 1.3,
+    "use_hdr_tone_map": 0,
+    "use_gamma": 0,
+    "cliff": "a0e792",
+    "cube": "70e543",
+    "e_power": 0.5,
+    "e_color": "2700d0"
 }

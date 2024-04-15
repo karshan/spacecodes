@@ -81,7 +81,10 @@ pub struct ShaderLocs {
     cube_pos: i32,
     cube_size: i32,
     use_hdr_tone_map: i32,
-    light_mult: i32
+    use_gamma: i32,
+    light_mult: i32,
+    emissive_power: i32,
+    emissive_color: i32
 }
 
 pub struct Renderer {
@@ -108,7 +111,7 @@ impl Renderer {
         shader.set_shader_value(light_count_loc, 4);
     
         // Get location for shader parameters that can be modified in real time
-        let emissive_intensity_loc = shader.get_shader_location("emissivePower");
+        let emissive_power_loc = shader.get_shader_location("emissivePower");
         let emissive_color_loc = shader.get_shader_location("emissiveColor");
         shader.set_shader_value(shader.get_shader_location("tiling"), Vector2::new(0.5, 0.5));
     
@@ -170,7 +173,10 @@ impl Renderer {
                 cube_size: shader.get_shader_location("cubeSize"),
                 num_cubes: shader.get_shader_location("numCubes"),
                 use_hdr_tone_map: shader.get_shader_location("useHdrToneMap"),
-                light_mult: shader.get_shader_location("lightMult")
+                use_gamma: shader.get_shader_location("useGamma"),
+                light_mult: shader.get_shader_location("lightMult"),
+                emissive_color: emissive_color_loc,
+                emissive_power: emissive_power_loc
             },
             shader: shader,
 
@@ -233,13 +239,13 @@ impl Renderer {
             let hex: &str = (|| {
                 constants.get(s)?.as_array()?.get(idx)?.as_str()
             })().unwrap_or("000000");
-            Color::from_hex(hex).unwrap()
+            Color::from_hex(hex).unwrap_or(Color::BLACK)
         };
         let get_color = |s: &str| -> Color {
             let hex: &str = (|| {
                 constants.get(s)?.as_str()
             })().unwrap_or("000000");
-            Color::from_hex(hex).unwrap()
+            Color::from_hex(hex).unwrap_or(Color::BLACK)
         };
         let get_f32 = |s: &str| -> f32 {
             (|| {
@@ -265,7 +271,10 @@ impl Renderer {
         self.lights[0].color = Vector4::new(lc.x, lc.y, lc.z, 1.0);
         update_light(&mut self.shader, &self.lights[0]);
         self.shader.set_shader_value(self.locs.use_hdr_tone_map, get_i32("use_hdr_tone_map"));
+        self.shader.set_shader_value(self.locs.use_hdr_tone_map, get_i32("use_gamma"));
         self.shader.set_shader_value(self.locs.light_mult, get_f32("light_mult"));
+
+        self.shader.set_shader_value(self.locs.emissive_power, 0f32);
 
         let screen_width = rl.get_screen_width() as f64;
         let screen_height = rl.get_screen_height() as f64;
@@ -287,8 +296,10 @@ impl Renderer {
         _3d.set_matrix_modelview(&thread, Renderer::iso_proj(screen_width, screen_height, zoom));
 
     
-        self.shader.set_shader_value(self.locs.use_tex_albedo, 1);
+        self.shader.set_shader_value(self.locs.use_tex_albedo, 0);
         self.shader.set_shader_value(self.locs.use_ao, 1);
+        self.shader.set_shader_value(self.locs.emissive_power, get_f32("e_power"));
+        self.shader.set_shader_value(self.locs.emissive_color, get_color("e_color").color_normalize());
         for x in -12..=12 {
             for y in -12..=12 {
                 let mut c = get_color("tile_tint");
@@ -302,15 +313,35 @@ impl Renderer {
         self.shader.set_shader_value(self.locs.use_tex_albedo, 0);
         self.shader.set_shader_value(self.locs.use_ao, 0);
 
-        cube.materials_mut()[0].shader = self.shader.clone();
+        self.plane.set_transform(&(Matrix::rotate_x(PI)));
+        for x in -12..=12 {
+            _3d.draw_model(&self.plane, Vector3::new(x as f32, -12.5, -0.5), 1.0, get_color("cliff"));
+        }
 
+        self.plane.set_transform(&(Matrix::rotate_z(PI/2.0)));
+        for y in -12..=12 {
+            _3d.draw_model(&self.plane, Vector3::new(-12.5, y as f32, -0.5), 1.0, get_color("cliff"));
+        }
+        self.shader.set_shader_value(self.locs.emissive_power, 0.0);
+
+        cube.materials_mut()[0].shader = self.shader.clone();
+        // cube.set_transform(&Matrix::identity());
+        // self.shader.set_shader_value(self.locs.emissive_power, get_f32("e_power"));
+        // self.shader.set_shader_value(self.locs.emissive_color, get_color("e_color").color_normalize());
+        // _3d.draw_model(&cube, Vector3::zero(), 1.0, get_color("cube"));
+
+        self.shader.set_shader_value(self.locs.emissive_power, get_f32("message_e_power0"));
+        self.shader.set_shader_value(self.locs.emissive_color, get_p_color("message_emission", 0).color_normalize());
         // TODO add these to cubePos so they have ao shadows
         let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
         cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
         _3d.draw_model(&cube, vec3(*ship(0), cube_z_offset), 1.0, get_p_color("message_color", 0));
 
+        self.shader.set_shader_value(self.locs.emissive_power, get_f32("message_e_power1"));
+        self.shader.set_shader_value(self.locs.emissive_color, get_p_color("message_emission", 1).color_normalize());
         cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
         _3d.draw_model(&cube, vec3(*ship(1), cube_z_offset), 1.0, get_p_color("message_color", 1));
+        self.shader.set_shader_value(self.locs.emissive_power, 0.0);
 
         cube.set_transform(&Matrix::identity());
 
@@ -334,15 +365,32 @@ impl Renderer {
         } else {
             self.shader.set_shader_value(self.locs.num_cubes, 0);
         }
-        for u in game_state.my_units.iter().chain(game_state.other_units.iter()) {
+        self.shader.set_shader_value(self.locs.emissive_power, get_f32(&format!("message_e_power{}", p_id)));
+        self.shader.set_shader_value(self.locs.emissive_color, get_p_color("message_emission", p_id).color_normalize());
+        for u in game_state.my_units.iter() {
             _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, get_p_color("message_color", u.player_id));
+        }
+        self.shader.set_shader_value(self.locs.emissive_power, get_f32(&format!("message_e_power{}", p_id)));
+        self.shader.set_shader_value(self.locs.emissive_color, get_p_color("message_emission", p_id).color_normalize());
+        for u in game_state.other_units.iter() {
+            _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, get_p_color("message_color", u.player_id));
+        }
+
+        for b in game_state.bounties.iter() {
+            let k = match b.type_ {
+                BountyEnum::Blink => "blink",
+                BountyEnum::Fuel => "fuel",
+                BountyEnum::Gold => "gold",
+                BountyEnum::Lumber => "lumber",
+            };
+            _3d.draw_sphere(vec3(b.pos, get_f32("bounty_z")), get_f32("bounty_r"), get_color(k));
         }
 
         if let MouseState::Path(path, y_first) = mouse_state {
             let mut p = path[0];
             for i in 1..path.len() {
                 let next_p = path[i];
-                _3d.draw_line_3D(vec3(p, 0.01), vec3(next_p, 0.01), Color::WHITE);
+                _3d.draw_line_3D(vec3(p, 0.01), vec3(next_p, 0.01), self.background_color);
                 p = next_p;
             }
             let m: Vector3;
@@ -351,8 +399,8 @@ impl Renderer {
             } else {
                 m = Vector3::new(mouse_position.x.round(), p.y.round(), 0.01);
             }
-            _3d.draw_line_3D(vec3(p, 0.01), m, Color::WHITE);
-            _3d.draw_line_3D(m, Vector3::new(mouse_position.x.round(), mouse_position.y.round(), 0.01), Color::WHITE);
+            _3d.draw_line_3D(vec3(p, 0.01), m, self.background_color);
+            _3d.draw_line_3D(m, Vector3::new(mouse_position.x.round(), mouse_position.y.round(), 0.01), self.background_color);
         }
 
         drop(_3d);

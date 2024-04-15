@@ -27,11 +27,11 @@ pub static BLINK_COOLDOWN: i32 = 900;
 pub static INTERCEPT_LENGTH: f32 = 30f32;
 pub static INTERCEPT_COST: f32 = 100f32;
 pub static INTERCEPT_EXPIRY: f32 = 2f32 * 60f32;
-pub static BLINK_RANGE: f32 = 120f32;
+pub static BLINK_RANGE: f32 = 3f32;
 pub static KILLS_TO_WIN: u8 = 5;
 pub static PLAY_AREA: Rect<i32> = Rect {
     x: -12, y: -12,
-    w: 25, h: 25,
+    w: 24, h: 24,
 };
 pub static SHIPS: [Vector2; 2] = [Vector2 { x: -12.0, y: 11.0 }, Vector2 { x: -11.0, y: 12.0 }];
 pub static STATIONS: [Vector2; 2] = [Vector2 { x: 11.0, y: -12.0 }, Vector2 { x: 12.0, y: -11.0 }];

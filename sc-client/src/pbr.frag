@@ -52,6 +52,7 @@ uniform vec3 cubeSize;
 uniform int numCubes;
 
 uniform int useHdrToneMap;
+uniform int useGamma;
 uniform float lightMult;
 
 float sdBox(vec3 p, vec3 b) {
@@ -102,8 +103,8 @@ vec4 ComputePBR()
         N = normalize(N*TBN);
     }
 
-    vec3 emissive = vec3(0);
-    emissive = (texture(emissiveMap, vec2(fragTexCoord.x*tiling.x+offset.x, fragTexCoord.y*tiling.y+offset.y)).rgb).g * emissiveColor.rgb*emissivePower * useTexEmissive;
+    // vec3 emissive = vec3(0);
+    // emissive = (texture(emissiveMap, vec2(fragTexCoord.x*tiling.x+offset.x, fragTexCoord.y*tiling.y+offset.y)).rgb).g * emissiveColor.rgb*emissivePower * useTexEmissive;
 
     vec3 lightAccum = vec3(0.0);
     for (int i = 0; i < numOfLights; i++)
@@ -133,7 +134,7 @@ vec4 ComputePBR()
     if (lights[0].enabled == 0) {
         return vec4(albedo, albedoAlpha);
     } else {
-        return vec4(lightAccum + emissive, albedoAlpha);
+        return vec4(lightAccum + emissiveColor.rgb * emissivePower, albedoAlpha);
     }
 }
 
@@ -148,7 +149,9 @@ void main()
     }
     
     // Gamma correction
-    color = pow(color, vec3(1.0/2.2));
+    if (useGamma == 1) {
+        color = pow(color, vec3(1.0/2.2));
+    }
 
     finalColor = vec4(color, color4.a);
 }
