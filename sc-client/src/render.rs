@@ -196,9 +196,19 @@ impl Renderer {
         mouse_position
     }
 
+    pub fn screen2clip(raw_mouse_position: Vector2, screen_width: f64, screen_height: f64) -> Vector2 {
+        let screen2clip_mat = Matrix::translate(-1.0, 1.0, 0.0) *
+            Matrix::scale(2.0/screen_width as f32, -2.0/screen_height as f32, 1.0);
+        let mut mouse_position = Vector3::new(raw_mouse_position.x, raw_mouse_position.y, 0f32).transform_with(screen2clip_mat);
+        mouse_position.x += mouse_position.z;
+        mouse_position.y += mouse_position.z;
+        mouse_position.z = 0.0;
+        Vector2::new(mouse_position.x, mouse_position.y)
+    }
+
     fn draw_cube_outline<'a>(self: &mut Self, _3d: &mut RaylibMode3D<'a, RaylibDrawHandle>, pos: Vector3, cube_size: f32, cube_z_offset: f32, highlight_color: Color, thickness: f32) {
         let z_thickness = thickness;
-        let bring_front = Matrix::translate(-1.0, -1.0, 1.0);
+        let bring_front = Matrix::translate(-0.01, -0.01, 0.01);
         self.plane.set_transform(&(bring_front * Matrix::translate(0.0, cube_size/2.0 + thickness/2.0, cube_z_offset + cube_size/2.0) * Matrix::scale(cube_size, thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
         self.plane.set_transform(&(bring_front * Matrix::translate(cube_size/2.0 + thickness/2.0, thickness/2.0, cube_z_offset + cube_size/2.0) * Matrix::scale(thickness, cube_size + thickness, 1.0) * Matrix::rotate_x(PI/2.0)));
@@ -307,13 +317,15 @@ impl Renderer {
         _3d.draw_cube(vec3(*station(0), 0.25), 0.1, 0.1, 0.5, ship_color(0).alpha(0.5));
         _3d.draw_cube(vec3(*station(1), 0.25), 0.1, 0.1, 0.5, ship_color(1).alpha(0.5));
 
-        if game_state.sub_selection == Some(SubSelection::Ship) {
-            self.lights[0].enabled = 0;
-            update_light(&mut self.shader, &self.lights[0]);
-            self.draw_cube_outline(&mut _3d, vec3(*ship(p_id), 0.0), cube_side_len, cube_z_offset, get_color("selection"), get_f32("selection_thickness"));
-            self.lights[0].enabled = 1;
-            update_light(&mut self.shader, &self.lights[0]);
+        self.lights[0].enabled = 0;
+        update_light(&mut self.shader, &self.lights[0]);
+        // ship is always selected
+        self.draw_cube_outline(&mut _3d, vec3(*ship(p_id), 0.0), cube_side_len, cube_z_offset, get_color("selection"), get_f32("selection_thickness"));
+        for u in game_state.selection.iter().filter(|s| if let Selection::Unit(_) = s { true } else { false }).map(|s| if let Selection::Unit(u) = s { game_state.my_units[*u].clone() } else { panic!("impossible") }) {
+            self.draw_cube_outline(&mut _3d, vec3(u.pos, 0.0), cube_side_len, cube_z_offset, get_color("selection"), get_f32("selection_thickness"));
         }
+        self.lights[0].enabled = 1;
+        update_light(&mut self.shader, &self.lights[0]);
 
         let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, cube_z_offset)).collect::<Vec<Vector3>>();
         if (cubes.len() <= 20) {

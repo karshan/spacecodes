@@ -509,7 +509,11 @@ fn main() -> std::io::Result<()> {
     let mut zoom = false;
     while !rl.window_should_close() {
         let raw_mouse_position = rl.get_mouse_position();
-        let mouse_position = Renderer::screen2world(raw_mouse_position, rl.get_screen_width() as f64, rl.get_screen_height() as f64, zoom);
+        let screen_width =  rl.get_screen_width() as f64;
+        let screen_height = rl.get_screen_height() as f64;
+        let mouse_position = Renderer::screen2world(raw_mouse_position, screen_width, screen_height, zoom);
+        let clip_mouse_position = Renderer::screen2clip(raw_mouse_position, screen_width, screen_height);
+        let iso_proj = Renderer::iso_proj(screen_width, screen_height, zoom);
         let rounded_mouse_pos = Vector2::new(mouse_position.x.round(), mouse_position.y.round());
 
         state = match state {
@@ -697,36 +701,27 @@ fn main() -> std::io::Result<()> {
                         if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
                             MouseState::Drag(start_pos)
                         } else {
-                            // let selection_pos = Vector2 { x: start_pos.x.min(mouse_position.x), y: start_pos.y.min(mouse_position.y) };
-                            // let selection_size = Vector2 { x: (start_pos.x - mouse_position.x).abs(), y: (start_pos.y - mouse_position.y).abs() };
-                            // let selection_rect = Rect { x: selection_pos.x.round() as i32, y: selection_pos.y.round() as i32, w: selection_size.x.round() as i32, h: selection_size.y.round() as i32 };
-                            // let mut in_box: Vec<Selection> = collide_units(&game_state.my_units, &selection_pos, &selection_size).iter().map(|u_id| Selection::Unit(*u_id)).collect();
-                            // // if ship(p_id).collide(&selection_rect) {
-                            // if false {
-                            //     in_box.push(Selection::Ship);
-                            // }
-                            // if !in_box.is_empty() {
-                            //     if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
-                            //         game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
-                            //     } else {
-                            //         game_state.selection = HashSet::from_iter(in_box);
-                            //     }
-                            // }
-                            // let mut choices = vec![];
-                            // if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
-                            //     choices.push(SubSelection::Unit);
-                            // }
-                            // if game_state.selection.contains(&Selection::Ship) {
-                            //     choices.push(SubSelection::Ship);
-                            // }
-                            // if game_state.selection.contains(&Selection::Station) {
-                            //     choices.push(SubSelection::Station);
-                            // }
-                            // if choices.is_empty() {
-                            //     game_state.sub_selection = None;
-                            // } else {
-                            //     game_state.sub_selection = Some(choices[0]);
-                            // }
+                            let start_pos_clip = Renderer::screen2clip(start_pos, screen_width, screen_height);
+                            let selection_pos = Vector2 { x: start_pos_clip.x.min(clip_mouse_position.x), y: start_pos_clip.y.min(clip_mouse_position.y) };
+                            let selection_size = Vector2 { x: (start_pos_clip.x - clip_mouse_position.x).abs(), y: (start_pos_clip.y - clip_mouse_position.y).abs() };
+                            let selection_rect = Rect { x: selection_pos.x, y: selection_pos.y, w: selection_size.x, h: selection_size.y };
+
+                            // FIXME use cube_z_offset
+                            fn unit_vec4(v2: Vector2) -> Vector4 { Vector4::new(v2.x, v2.y, 0.5, 1.0) }
+                            fn unit_screen_pos(v4: Vector4) -> Vector2 { Vector2::new(v4.x, v4.y) };
+                            let mut in_box: Vec<_> = game_state.my_units.iter().enumerate().filter(|(_, u)| selection_rect.contains_point(&unit_screen_pos(unit_vec4(u.pos).transform(iso_proj)))).map(|(i, _)| Selection::Unit(i)).collect();
+                            if !in_box.is_empty() {
+                                if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
+                                    game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
+                                } else {
+                                    game_state.selection = HashSet::from_iter(in_box);
+                                }
+                            }
+                            if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
+                                game_state.sub_selection = Some(SubSelection::Unit);
+                            } else {
+                                game_state.sub_selection = Some(SubSelection::Ship);
+                            }
                             MouseState::None
                         }
                     },
