@@ -80,11 +80,16 @@ pub struct ShaderLocs {
     num_cubes: i32,
     cube_pos: i32,
     cube_size: i32,
+    gcube_pos: i32,
+    gcube_size: i32,
     use_hdr_tone_map: i32,
     use_gamma: i32,
     light_mult: i32,
     emissive_power: i32,
-    emissive_color: i32
+    emissive_color: i32,
+    ao_intensity: i32,
+    ao_stepsize: i32,
+    ao_iterations: i32,
 }
 
 pub struct Renderer {
@@ -171,12 +176,17 @@ impl Renderer {
                 use_ao: shader.get_shader_location("useAo"),
                 cube_pos: shader.get_shader_location("cubePos"),
                 cube_size: shader.get_shader_location("cubeSize"),
+                gcube_pos: shader.get_shader_location("gcubePos"),
+                gcube_size: shader.get_shader_location("gcubeSize"),
                 num_cubes: shader.get_shader_location("numCubes"),
                 use_hdr_tone_map: shader.get_shader_location("useHdrToneMap"),
                 use_gamma: shader.get_shader_location("useGamma"),
                 light_mult: shader.get_shader_location("lightMult"),
                 emissive_color: emissive_color_loc,
-                emissive_power: emissive_power_loc
+                emissive_power: emissive_power_loc,
+                ao_intensity: shader.get_shader_location("ao_intensity"),
+                ao_stepsize: shader.get_shader_location("ao_stepsize"),
+                ao_iterations: shader.get_shader_location("ao_iterations"),
             },
             shader: shader,
 
@@ -266,6 +276,10 @@ impl Renderer {
             })().unwrap_or(Vector3::zero())
         };
 
+        self.shader.set_shader_value(self.locs.ao_intensity, get_f32("ao_intensity"));
+        self.shader.set_shader_value(self.locs.ao_stepsize, get_f32("ao_stepsize"));
+        self.shader.set_shader_value(self.locs.ao_iterations, get_i32("ao_iterations"));
+
         self.lights[0].position = get_vec3("light_pos");
         let lc = get_vec3("light_color");
         self.lights[0].color = Vector4::new(lc.x, lc.y, lc.z, 1.0);
@@ -311,7 +325,7 @@ impl Renderer {
             }
         }
         self.shader.set_shader_value(self.locs.use_tex_albedo, 0);
-        self.shader.set_shader_value(self.locs.use_ao, 0);
+        self.shader.set_shader_value(self.locs.use_ao, 1);
 
         self.plane.set_transform(&(Matrix::rotate_x(PI)));
         for x in -12..=12 {
@@ -333,7 +347,9 @@ impl Renderer {
         self.shader.set_shader_value(self.locs.emissive_power, get_f32("message_e_power0"));
         self.shader.set_shader_value(self.locs.emissive_color, get_p_color("message_emission", 0).color_normalize());
         // TODO add these to cubePos so they have ao shadows
+        self.shader.set_shader_value_v(self.locs.gcube_pos, &[vec3(*ship(0), cube_z_offset), vec3(*ship(1), cube_z_offset)]);
         let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
+        self.shader.set_shader_value_v(self.locs.gcube_size, &[alpha(0), alpha(1)]);
         cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
         _3d.draw_model(&cube, vec3(*ship(0), cube_z_offset), 1.0, get_p_color("message_color", 0));
 

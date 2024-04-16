@@ -29,5 +29,8 @@
     "cliff": "a0e792",
     "cube": "70e543",
     "e_power": 0.5,
-    "e_color": "2700d0"
+    "e_color": "2700d0",
+    "ao_intensity": 0.6,
+    "ao_stepsize": 0.035,
+    "ao_iterations": 4
 }

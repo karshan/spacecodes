@@ -51,9 +51,15 @@ uniform vec3 cubePos[20];
 uniform vec3 cubeSize;
 uniform int numCubes;
 
+uniform vec3 gcubePos[2];
+uniform float gcubeSize[2];
+
 uniform int useHdrToneMap;
 uniform int useGamma;
 uniform float lightMult;
+uniform float ao_intensity;
+uniform float ao_stepsize;
+uniform int ao_iterations;
 
 float sdBox(vec3 p, vec3 b) {
   vec3 q = abs(p) - b;
@@ -63,25 +69,28 @@ float sdBox(vec3 p, vec3 b) {
 float map(in vec3 pos) {
     float result = 1000.0;
     for (int i = 0; i < numCubes; i++) {
-        result = min(result, sdBox(pos - cubePos[i], cubeSize/2.5));
+        result = min(result, sdBox(pos - cubePos[i], cubeSize/2));
     }
+    result = min(result, sdBox(pos - gcubePos[0], cubeSize*gcubeSize[0]/2));
+    result = min(result, sdBox(pos - gcubePos[1], cubeSize*gcubeSize[1]/2));
     return result;
 }
 
 // https://iquilezles.org/articles/nvscene2008/rwwtt.pdf
-float calcAO( in vec3 pos, in vec3 nor )
+float calcAO(in vec3 pos, in vec3 nor)
 {
 	float occ = 0.0;
-    float sca = 0.15;
-    for( int i=0; i<15; i++ )
+    for( int i=1; i<=ao_iterations; i++ )
     {
-        float h = 0.01 + 0.12*float(i)/4.0;
-        float d = map( pos + h*nor );
-        occ += (h-d)*sca;
-        sca *= 0.95;
-        if( occ>0.35 ) break;
+        float h = ao_stepsize*float(i);
+        float d = map(pos + h*nor);
+        occ += max(0.0, (h-d)/h);
+        // occ += (h-d)*sca;
+        // sca *= 0.95;
+        // if( occ>0.35 ) break;
     }
-    return clamp( 1.0 - 3.0*occ, 0.0, 1.0 ) * (0.5+0.5*nor.z);
+    return (1.0 - occ * ao_intensity);
+    // return clamp( 1.0 - 3.0*occ, 0.0, 1.0 ) * (0.5+0.5*nor.z);
 }
 
 vec4 ComputePBR()
