@@ -447,7 +447,7 @@ fn main() -> std::io::Result<()> {
     }
 
     let (mut rl, thread) = raylib::init()
-        .size(2560, 1440)
+        .size(1920, 1080)
         // .fullscreen()
         .title("Space Codes")
         .msaa_4x()

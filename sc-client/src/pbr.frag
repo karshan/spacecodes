@@ -61,6 +61,12 @@ uniform float ao_intensity;
 uniform float ao_stepsize;
 uniform int ao_iterations;
 
+uniform float shadow_mint;
+uniform float shadow_maxt;
+uniform float shadow_w;
+uniform float shadow_intensity;
+uniform vec3 shadow_light;
+
 float sdBox(vec3 p, vec3 b) {
   vec3 q = abs(p) - b;
   return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
@@ -92,6 +98,22 @@ float calcAO(in vec3 pos, in vec3 nor)
     return (1.0 - occ * ao_intensity);
     // return clamp( 1.0 - 3.0*occ, 0.0, 1.0 ) * (0.5+0.5*nor.z);
 }
+
+float softshadow( in vec3 ro, in vec3 rd, float mint, float maxt, float k )
+{
+    float res = 1.0;
+    float t = mint;
+    for( int i=0; i<256 && t<maxt; i++ )
+    {
+        float h = map(ro + rd*t);
+        if( h<0.001 )
+            return 0.0;
+        res = min( res, k*h/t );
+        t += h;
+    }
+    return res;
+}
+
 
 vec4 ComputePBR()
 {
@@ -136,6 +158,12 @@ vec4 ComputePBR()
         float diffuse = clamp(dot(N, L), 0.0, 1.0);
         if (useAo == 1)
             diffuse *= occ;
+        float shadow = 1.0;
+        if (lights[i].type == LIGHT_DIRECTIONAL) {
+            shadow = softshadow(fragPosition, normalize(shadow_light), shadow_mint, shadow_maxt, shadow_w) * 0.5 + 0.5;
+            shadow = pow(shadow, shadow_intensity);
+            diffuse *= shadow;
+        }
         lightAccum += (albedo * lightMult * diffuse * lights[i].color.rgb) * lights[i].enabled; // light color constant
     }
     // float t = length(viewPos - fragPosition);

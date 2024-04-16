@@ -90,6 +90,11 @@ pub struct ShaderLocs {
     ao_intensity: i32,
     ao_stepsize: i32,
     ao_iterations: i32,
+    shadow_mint: i32,
+    shadow_maxt: i32,
+    shadow_w: i32,
+    shadow_intensity: i32,
+    shadow_light: i32
 }
 
 pub struct Renderer {
@@ -187,6 +192,11 @@ impl Renderer {
                 ao_intensity: shader.get_shader_location("ao_intensity"),
                 ao_stepsize: shader.get_shader_location("ao_stepsize"),
                 ao_iterations: shader.get_shader_location("ao_iterations"),
+                shadow_mint: shader.get_shader_location("shadow_mint"),
+                shadow_maxt: shader.get_shader_location("shadow_maxt"),
+                shadow_w: shader.get_shader_location("shadow_w"),
+                shadow_intensity: shader.get_shader_location("shadow_intensity"),
+                shadow_light: shader.get_shader_location("shadow_light"),
             },
             shader: shader,
 
@@ -279,6 +289,11 @@ impl Renderer {
         self.shader.set_shader_value(self.locs.ao_intensity, get_f32("ao_intensity"));
         self.shader.set_shader_value(self.locs.ao_stepsize, get_f32("ao_stepsize"));
         self.shader.set_shader_value(self.locs.ao_iterations, get_i32("ao_iterations"));
+        self.shader.set_shader_value(self.locs.shadow_mint, get_f32("shadow_mint"));
+        self.shader.set_shader_value(self.locs.shadow_maxt, get_f32("shadow_maxt"));
+        self.shader.set_shader_value(self.locs.shadow_w, get_f32("shadow_w"));
+        self.shader.set_shader_value(self.locs.shadow_intensity, get_f32("shadow_intensity"));
+        self.shader.set_shader_value(self.locs.shadow_light, get_vec3("shadow_light"));
 
         self.lights[0].position = get_vec3("light_pos");
         let lc = get_vec3("light_color");
