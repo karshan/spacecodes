@@ -94,7 +94,10 @@ pub struct ShaderLocs {
     shadow_maxt: i32,
     shadow_w: i32,
     shadow_intensity: i32,
-    shadow_light: i32
+    shadow_light: i32,
+    bounty_pos: i32,
+    bounty_r: i32,
+    num_bounties: i32
 }
 
 pub struct Renderer {
@@ -103,6 +106,7 @@ pub struct Renderer {
     background_color: Color,
     floor: Model,
     plane: Model,
+    sphere: Model,
     xtr: Texture2D,
     sky: Texture2D,
     locs: ShaderLocs,
@@ -160,6 +164,9 @@ impl Renderer {
         let mut plane = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_plane(&thread, 1.0, 1.0, 4, 3).make_weak() }).unwrap();
         plane.materials_mut()[0].shader = shader.clone();
         plane.set_transform(&(Matrix::translate(0.0, 0.0, 0.0) * Matrix::rotate_x(PI/2.0)));
+
+        let mut sphere = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_sphere(&thread, 1.0, 32, 32).make_weak() }).unwrap();
+        sphere.materials_mut()[0].shader = shader.clone();
     
         let mut ctr = 0;
         let mut cube_pos = Vector3::new(0.0, 0.0, 0.5);
@@ -174,6 +181,7 @@ impl Renderer {
             background_color: background_color,
             floor: floor,
             plane: plane,
+            sphere: sphere,
             xtr: xtr_tile,
             sky: xtr_sky,
             locs: ShaderLocs {
@@ -184,6 +192,9 @@ impl Renderer {
                 gcube_pos: shader.get_shader_location("gcubePos"),
                 gcube_size: shader.get_shader_location("gcubeSize"),
                 num_cubes: shader.get_shader_location("numCubes"),
+                bounty_pos: shader.get_shader_location("bountyPos"),
+                bounty_r: shader.get_shader_location("bountyR"),
+                num_bounties: shader.get_shader_location("numBounties"),
                 use_hdr_tone_map: shader.get_shader_location("useHdrToneMap"),
                 use_gamma: shader.get_shader_location("useGamma"),
                 light_mult: shader.get_shader_location("lightMult"),
@@ -390,7 +401,7 @@ impl Renderer {
         update_light(&mut self.shader, &self.lights[0]);
 
         let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, cube_z_offset)).collect::<Vec<Vector3>>();
-        if (cubes.len() <= 20) {
+        if cubes.len() <= 20 {
             self.shader.set_shader_value_v(self.locs.cube_pos, cubes.as_slice());
             self.shader.set_shader_value(self.locs.num_cubes, cubes.len() as i32);
         } else {
@@ -407,6 +418,13 @@ impl Renderer {
             _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, get_p_color("message_color", u.player_id));
         }
 
+        if game_state.bounties.len() <= 10 {
+            self.shader.set_shader_value_v(self.locs.bounty_pos, game_state.bounties.iter().map(|b| vec3(b.pos, get_f32("bounty_z"))).collect::<Vec<_>>().as_slice());
+            self.shader.set_shader_value(self.locs.num_bounties, game_state.bounties.len() as i32);
+            self.shader.set_shader_value(self.locs.bounty_r, get_f32("bounty_r"));
+        } else {
+            self.shader.set_shader_value(self.locs.num_bounties, 0);
+        }
         for b in game_state.bounties.iter() {
             let k = match b.type_ {
                 BountyEnum::Blink => "blink",
@@ -414,7 +432,7 @@ impl Renderer {
                 BountyEnum::Gold => "gold",
                 BountyEnum::Lumber => "lumber",
             };
-            _3d.draw_sphere(vec3(b.pos, get_f32("bounty_z")), get_f32("bounty_r"), get_color(k));
+            _3d.draw_model(&self.sphere, vec3(b.pos, get_f32("bounty_z")), get_f32("bounty_r"), get_color(k));
         }
 
         if let MouseState::Path(path, y_first) = mouse_state {

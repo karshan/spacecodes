@@ -54,6 +54,10 @@ uniform int numCubes;
 uniform vec3 gcubePos[2];
 uniform float gcubeSize[2];
 
+uniform vec3 bountyPos[10];
+uniform float bountyR;
+uniform int numBounties;
+
 uniform int useHdrToneMap;
 uniform int useGamma;
 uniform float lightMult;
@@ -72,6 +76,11 @@ float sdBox(vec3 p, vec3 b) {
   return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
 }
 
+float sdSphere( vec3 p, float s )
+{
+  return length(p)-s;
+}
+
 float map(in vec3 pos) {
     float result = 1000.0;
     for (int i = 0; i < numCubes; i++) {
@@ -79,6 +88,9 @@ float map(in vec3 pos) {
     }
     result = min(result, sdBox(pos - gcubePos[0], cubeSize*gcubeSize[0]/2));
     result = min(result, sdBox(pos - gcubePos[1], cubeSize*gcubeSize[1]/2));
+    for (int i = 0; i < numBounties; i++) {
+        result = min(result, sdSphere(pos - bountyPos[i], bountyR));
+    }
     return result;
 }
 
