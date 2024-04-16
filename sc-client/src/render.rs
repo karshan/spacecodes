@@ -418,8 +418,9 @@ impl Renderer {
             _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, get_p_color("message_color", u.player_id));
         }
 
+        let bounty_z = get_f32("bounty_z") + get_f32("bounty_hover_d") * ((frame_counter as f32/60f32) * get_f32("bounty_hover_s")).sin();
         if game_state.bounties.len() <= 10 {
-            self.shader.set_shader_value_v(self.locs.bounty_pos, game_state.bounties.iter().map(|b| vec3(b.pos, get_f32("bounty_z"))).collect::<Vec<_>>().as_slice());
+            self.shader.set_shader_value_v(self.locs.bounty_pos, game_state.bounties.iter().map(|b| vec3(b.pos, bounty_z)).collect::<Vec<_>>().as_slice());
             self.shader.set_shader_value(self.locs.num_bounties, game_state.bounties.len() as i32);
             self.shader.set_shader_value(self.locs.bounty_r, get_f32("bounty_r"));
         } else {
@@ -432,7 +433,7 @@ impl Renderer {
                 BountyEnum::Gold => "gold",
                 BountyEnum::Lumber => "lumber",
             };
-            _3d.draw_model(&self.sphere, vec3(b.pos, get_f32("bounty_z")), get_f32("bounty_r"), get_color(k));
+            _3d.draw_model(&self.sphere, vec3(b.pos, bounty_z), get_f32("bounty_r"), get_color(k));
         }
 
         if let MouseState::Path(path, y_first) = mouse_state {

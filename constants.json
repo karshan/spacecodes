@@ -9,12 +9,17 @@
     ],
     "message_e_power0": 0.3,
     "message_e_power1": 0.5,
+
     "blink": "ef233c",
     "lumber": "003049",
     "gold": "fb8500",
     "fuel": "ffffff",
+
     "bounty_z": 0.5,
     "bounty_r": 0.125,
+    "bounty_hover_d": 0.1,
+    "bounty_hover_s": 5,
+
     "tile_tint": "70e543",
     "tile_highlight_tint": "92eb70",
     "selection": "00ff00",
