@@ -413,7 +413,7 @@ fn path_lumber_cost(path: &VecDeque<Vector2>) -> i32 {
 pub enum MouseState {
     Drag(Vector2),
     Path(VecDeque<Vector2>, bool),
-    Intercept(bool),
+    Intercept,
     WaitReleaseLButton,
     None
 }
@@ -666,7 +666,7 @@ fn main() -> std::io::Result<()> {
                                 KeyboardKey::KEY_ESCAPE => {
                                     match mouse_state {
                                         MouseState::Path(_, _) => { cancel = true }
-                                        MouseState::Intercept(_) => { cancel = true }
+                                        MouseState::Intercept => { cancel = true }
                                         _ => {}
                                     }
                                 },
@@ -692,8 +692,8 @@ fn main() -> std::io::Result<()> {
                         } else if start_message_path {
                             MouseState::Path(VecDeque::from(vec![*ship(p_id)]), true)
                         } else if start_intercept {
-                            rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_POINTING_HAND);
-                            MouseState::Intercept(false)
+                            rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_CROSSHAIR);
+                            MouseState::Intercept
                         } else {
                             MouseState::None
                         }
@@ -760,25 +760,22 @@ fn main() -> std::io::Result<()> {
                             }
                         }
                     },
-                    MouseState::Intercept(vertical) => {
+                    MouseState::Intercept => {
                         if cancel {
                             rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                             MouseState::None
                         } else if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-                            if PLAY_AREA.contains_point(&vec2(mouse_position)) &&
-                                    !game_state.other_units.iter().any(|other_u| intercept_inside_bubble(other_u, &Interception { start_frame: 0, pos: vec2(mouse_position), vertical: vertical, player_id: 0 })) &&
+                            if PLAY_AREA.contains_point(&rounded_mouse_pos) &&
                                     game_state.gold[p_id] >= INTERCEPT_COST {
-                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: vec2(mouse_position), vertical: vertical }));
+                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: rounded_mouse_pos, vertical: false }));
                                 rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                                 MouseState::WaitReleaseLButton
                             } else {
                                 intercept_err = true;
-                                MouseState::Intercept(vertical)
+                                MouseState::Intercept(false)
                             }
-                        } else if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
-                            MouseState::Intercept(!vertical)
                         } else {
-                            MouseState::Intercept(vertical)
+                            MouseState::Intercept(false)
                         }
                     },
                     MouseState::WaitReleaseLButton => {
@@ -899,7 +896,8 @@ fn main() -> std::io::Result<()> {
             },
         };
 
-        render.render(&mut rl, &thread, frame_counter, p_id, &game_state, mouse_position, &mouse_state, &state, zoom, &NetInfo { game_ps: &game_ps, waiting_avg: &waiting_avg, my_frame_delay });
+        render.render(&mut rl, &thread, frame_counter, p_id, &game_state, &interceptions, mouse_position, &mouse_state, &state, zoom,
+            &NetInfo { game_ps: &game_ps, waiting_avg: &waiting_avg, my_frame_delay });
     }
     Ok(())
 }

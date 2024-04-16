@@ -4,7 +4,7 @@ use sc_types::*;
 use sc_types::constants::*;
 use serde_json::Value;
 
-use crate::{ClientState, MouseState, NetInfo};
+use crate::{ClientState, Interception, MouseState, NetInfo};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -264,7 +264,8 @@ impl Renderer {
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
     }
     
-    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo) {
+    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState,
+            interceptions: &Vec<Interception>, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo) {
         let constants: Value = serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null);
         let get_p_color = |s: &str, idx: usize| -> Color {
             let hex: &str = (|| {
@@ -343,8 +344,15 @@ impl Renderer {
         for x in -12..=12 {
             for y in -12..=12 {
                 let mut c = get_color("tile_tint");
-                if (mouse_position.x.round() == x as f32 && mouse_position.y.round() == y as f32) {
-                    c = get_color("tile_highlight_tint");
+                if mouse_position.x.round() == x as f32 && mouse_position.y.round() == y as f32 {
+                    c = if let MouseState::Intercept = mouse_state {
+                        get_p_color("message_color", p_id).alpha(0.5)
+                    } else {
+                        get_color("tile_highlight_tint")
+                    }; 
+                }
+                if interceptions.iter().find(|i| i.pos.x == x as f32 && i.pos.y == y as f32).is_some() {
+                    c = get_p_color("message_color", p_id);
                 }
                 self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
                 _3d.draw_model(&self.floor, Vector3::zero(), 1.0, c);
