@@ -1,10 +1,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::cmp::{min, max};
-use std::f32::EPSILON;
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
 use std::time::Instant;
-use pathfinding::path_collides;
 use rand_core::SeedableRng;
 use raylib::prelude::*;
 use sc_types::*;
@@ -29,7 +27,6 @@ use crate::ui::*;
 struct Interception {
     start_frame: i64,
     pos: Vector2,
-    vertical: bool,
     player_id: usize,
 }
 
@@ -103,8 +100,8 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
                     game_state.spawn_cooldown[*player_id] = MSG_COOLDOWN;
                     game_state.lumber[*player_id] -= max(0, path_lumber_cost(path) - MSG_FREE_LUMBER);
                 },
-                GameCommand::Intercept(InterceptCommand { pos, vertical }) => {
-                    interceptions.push(Interception { pos: pos.clone(), vertical: *vertical, start_frame: frame, player_id: i });
+                GameCommand::Intercept(InterceptCommand { pos }) => {
+                    interceptions.push(Interception { pos: pos.clone(), start_frame: frame, player_id: i });
                     game_state.gold[i] -= INTERCEPT_COST;
                 },
                 GameCommand::BuyUpgrade(u) => {
@@ -120,19 +117,20 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
     }
 
     for intercept in &mut *interceptions {
-        let other_units = if p_id == intercept.player_id { &mut game_state.other_units } else { &mut game_state.my_units };
-        for unit in other_units.iter_mut() {
-            // Have to check unit.dead to avoid double counting interception kills (If 2 interceptions kill the same unit on the same frame)
-            if !unit.dead {
-                let int_ = intercept_line(intercept);
-                if unit.rect().collide_line(&int_[0], &int_[1]) {
-                    unit.dead = true;
-                    game_state.intercepted[intercept.player_id] += 1;
+        if frame - intercept.start_frame >= INTERCEPT_DELAY as i64 {
+            let other_units = if p_id == intercept.player_id { &mut game_state.other_units } else { &mut game_state.my_units };
+            for unit in other_units.iter_mut() {
+                // Have to check unit.dead to avoid double counting interception kills (If 2 interceptions kill the same unit on the same frame)
+                if !unit.dead {
+                    if rounded(unit.pos) == intercept.pos {
+                        unit.dead = true;
+                        game_state.intercepted[intercept.player_id] += 1;
+                    }
                 }
             }
         }
     }
-    interceptions.retain(|i| ((frame - i.start_frame) as f32) < INTERCEPT_EXPIRY);
+    interceptions.retain(|i| (frame - i.start_frame) < INTERCEPT_EXPIRY + INTERCEPT_DELAY);
     reap(game_state);
     game_state.other_units.retain(|u| !u.dead);
 }
@@ -343,56 +341,6 @@ fn collide_bounties(game_state: &mut GameState) {
     // PERF loop only once
     game_state.bounties.retain(|b| !game_state.my_units.iter().any(|u| same_tile(u.pos, b.pos)) &&
         !game_state.other_units.iter().any(|u| same_tile(u.pos, b.pos)))
-}
-
-fn intercept_line(intercept: &Interception) -> [Vector2; 2] {
-    let p1: Vector2;
-    let p2: Vector2;
-    if intercept.vertical {
-        p1 = intercept.pos - Vector2::new(0f32, INTERCEPT_LENGTH/2f32);
-        p2 = intercept.pos + Vector2::new(0f32, INTERCEPT_LENGTH/2f32);
-    } else {
-        p1 = intercept.pos - Vector2::new(INTERCEPT_LENGTH/2f32, 0f32);
-        p2 = intercept.pos + Vector2::new(INTERCEPT_LENGTH/2f32, 0f32);
-    }
-    [p1, p2]
-}
-
-fn bubble_rect(u: &Unit) -> Rect<i32> {
-    let cen = u.pos + u.size().scale_by(0.5f32);
-    let dir = (u.path[0] - u.pos).normalized();
-    let bubble_pos: Vector2;
-    let bubble_size: Vector2;
-    if dir.x < -EPSILON { // left
-        bubble_pos = cen + dir.scale_by(MSG_BUBBLE_LEN) + Vector2::new(0f32, -MSG_BUBBLE_WIDTH/2f32);
-        bubble_size = Vector2::new(MSG_BUBBLE_LEN, MSG_BUBBLE_WIDTH);
-    } else if dir.x > EPSILON { // right
-        bubble_pos = cen + Vector2::new(0f32, -MSG_BUBBLE_WIDTH/2f32);
-        bubble_size = Vector2::new(MSG_BUBBLE_LEN, MSG_BUBBLE_WIDTH);
-    } else if dir.y < -EPSILON { // top
-        bubble_pos = cen + dir.scale_by(MSG_BUBBLE_LEN) + Vector2::new(-MSG_BUBBLE_WIDTH/2f32, 0f32);
-        bubble_size = Vector2::new(MSG_BUBBLE_WIDTH, MSG_BUBBLE_LEN);
-    } else { // down
-        bubble_pos = cen + Vector2::new(-MSG_BUBBLE_WIDTH/2f32, 0f32);
-        bubble_size = Vector2::new(MSG_BUBBLE_WIDTH, MSG_BUBBLE_LEN);
-    }
-    Rect {
-        x: bubble_pos.x.round() as i32,
-        y: bubble_pos.y.round() as i32,
-        w: bubble_size.x.round() as i32,
-        h: bubble_size.y.round() as i32
-    }
-}
-
-fn intercept_inside_bubble(u: &Unit, intercept: &Interception) -> bool {
-    let int_ = intercept_line(intercept);
-    bubble_rect(u).collide_line(&int_[0], &int_[1]) ||
-        u.rect().collide_line(&int_[0], &int_[1])
-}
-
-fn draw_bubble(d: &mut RaylibDrawHandle, u: &Unit, c: &Color) {
-    let b = bubble_rect(u);
-    d.draw_rectangle_lines(b.x, b.y, b.w, b.h, c)
 }
 
 fn path_lumber_cost(path: &VecDeque<Vector2>) -> i32 {
@@ -767,15 +715,15 @@ fn main() -> std::io::Result<()> {
                         } else if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
                             if PLAY_AREA.contains_point(&rounded_mouse_pos) &&
                                     game_state.gold[p_id] >= INTERCEPT_COST {
-                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: rounded_mouse_pos, vertical: false }));
+                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: rounded_mouse_pos }));
                                 rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                                 MouseState::WaitReleaseLButton
                             } else {
                                 intercept_err = true;
-                                MouseState::Intercept(false)
+                                MouseState::Intercept
                             }
                         } else {
-                            MouseState::Intercept(false)
+                            MouseState::Intercept
                         }
                     },
                     MouseState::WaitReleaseLButton => {

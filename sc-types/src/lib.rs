@@ -2,7 +2,7 @@
 extern crate serde_derive;
 
 use std::{collections::{HashMap, HashSet, VecDeque}, hash::Hash};
-use constants::{BLINK_COOLDOWN, MESSAGE_SIZE, MSG_FUEL};
+use constants::{BLINK_COOLDOWN, MESSAGE_SIZE, MESSAGE_SPEED, MSG_FUEL};
 use raylib::prelude::{Vector2, Color, rcolor};
 use rand_chacha::ChaCha20Rng;
 
@@ -208,7 +208,7 @@ impl Unit {
     }
 
     pub fn speed(self: &Self) -> f32 {
-        0.02f32
+        MESSAGE_SPEED
     }
 
     pub fn cooldown(self: &Self) -> i32 {
@@ -233,7 +233,6 @@ pub struct BlinkCommand {
 pub struct InterceptCommand {
     #[serde(with = "Vector2Def")]
     pub pos: Vector2,
-    pub vertical: bool,
 }
 
 #[serde_nested]

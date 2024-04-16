@@ -266,6 +266,7 @@ impl Renderer {
     
     pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState,
             interceptions: &Vec<Interception>, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo) {
+        let other_id = (p_id + 1) % 2;
         let constants: Value = serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null);
         let get_p_color = |s: &str, idx: usize| -> Color {
             let hex: &str = (|| {
@@ -351,7 +352,7 @@ impl Renderer {
                         get_color("tile_highlight_tint")
                     }; 
                 }
-                if interceptions.iter().find(|i| i.pos.x == x as f32 && i.pos.y == y as f32).is_some() {
+                if interceptions.iter().filter(|i| frame_counter - i.start_frame >= INTERCEPT_DELAY).find(|i| i.pos.x == x as f32 && i.pos.y == y as f32).is_some() {
                     c = get_p_color("message_color", p_id);
                 }
                 self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
@@ -420,8 +421,8 @@ impl Renderer {
         for u in game_state.my_units.iter() {
             _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, get_p_color("message_color", u.player_id));
         }
-        self.shader.set_shader_value(self.locs.emissive_power, get_f32(&format!("message_e_power{}", p_id)));
-        self.shader.set_shader_value(self.locs.emissive_color, get_p_color("message_emission", p_id).color_normalize());
+        self.shader.set_shader_value(self.locs.emissive_power, get_f32(&format!("message_e_power{}", other_id)));
+        self.shader.set_shader_value(self.locs.emissive_color, get_p_color("message_emission", other_id).color_normalize());
         for u in game_state.other_units.iter() {
             _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, get_p_color("message_color", u.player_id));
         }

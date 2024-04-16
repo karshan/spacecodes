@@ -2,8 +2,13 @@ extern crate rmp_serde as rmps;
 
 use std::{collections::{HashMap, VecDeque}, hash::Hash, net::{SocketAddr, UdpSocket}, ops::AddAssign, slice::Iter, time::Instant};
 use num_traits::Zero;
+use raylib::math::Vector2;
 use sc_types::{ClientPkt, SeqState, ServerEnum, ServerPkt};
 use std::io;
+
+pub fn rounded(v: Vector2) -> Vector2 {
+    Vector2::new(v.x.round(), v.y.round())
+}
 
 pub fn hm_add<K: Hash + Clone + Copy + Eq, V: AddAssign + Copy + Clone>(a: HashMap<K, V>, b: &HashMap<K, V>) -> HashMap<K, V> {
     let mut out = a.clone();
