@@ -61,19 +61,58 @@ fn create_light(_type: LightType, position: Vector3, target: Vector3, color: Col
     light
 }
 
-fn draw_border(img: &mut Image, c: Color) {
+fn draw_border(img: &mut Image, c: Color, thickness: i32) {
     for i in 0..2048 {
-        for j in 0..32 {
+        for j in 0..thickness {
             img.draw_pixel(i, j, c);
             img.draw_pixel(j, i, c);
         }
     }
 }
 
+struct Constants(Value);
+
+impl Constants {
+    fn get_p_color(self: &Self, s: &str, idx: usize) -> Color {
+        let hex: &str = (|| {
+            self.0.get(s)?.as_array()?.get(idx)?.as_str()
+        })().unwrap_or("000000");
+        Color::from_hex(hex).unwrap_or(Color::BLACK)
+    }
+
+    fn get_color(self: &Self, s: &str) -> Color {
+        let hex: &str = (|| {
+            self.0.get(s)?.as_str()
+        })().unwrap_or("000000");
+        Color::from_hex(hex).unwrap_or(Color::BLACK)
+    }
+
+    fn get_f32(self: &Self, s: &str) -> f32 {
+        (|| {
+            self.0.get(s)?.as_f64()
+        })().unwrap_or(0.0) as f32
+    }
+
+    fn get_i32(self: &Self, s: &str) -> i32 {
+        (|| {
+            self.0.get(s)?.as_i64()
+        })().unwrap_or(0) as i32
+    }
+
+    fn get_vec3(self: &Self, s: &str) -> Vector3 {
+        (|| {
+            let x = self.0.get(s)?.as_array()?.get(0)?.as_f64()?;
+            let y = self.0.get(s)?.as_array()?.get(1)?.as_f64()?;
+            let z = self.0.get(s)?.as_array()?.get(2)?.as_f64()?;
+            Some(Vector3::new(x as f32, y as f32, z as f32))
+        })().unwrap_or(Vector3::zero())
+    }
+}
 
 pub struct ShaderLocs {
     use_ao: i32,
     use_tex_albedo: i32,
+    use_tex_emissive: i32,
     num_cubes: i32,
     cube_pos: i32,
     cube_size: i32,
@@ -98,15 +137,14 @@ pub struct ShaderLocs {
 }
 
 pub struct Renderer {
-    constants: Value,
+    cs: Constants,
     shader: Shader,
     lights: Vec<Light>,
     background_color: Color,
     floor: Model,
     plane: Model,
     sphere: Model,
-    xtr: Texture2D,
-    sky: Texture2D,
+    xtr_sky: Texture2D,
     locs: ShaderLocs,
 }
 
@@ -143,19 +181,15 @@ impl Renderer {
     
         let background_color = Color::from_hex("264653").unwrap();
     
-        let mut img = Image::load_image("sc-client/assets/tex4.png").unwrap();
-        draw_border(&mut img, background_color);
-        let xtr_tile = rl.load_texture_from_image(&thread, &mut img).unwrap();
+        let constants = Constants(serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null));
 
         let mut sky = Image::load_image("sc-client/assets/sky.png").unwrap();
         sky.resize(rl.get_screen_width(), rl.get_screen_height());
         let xtr_sky = rl.load_texture_from_image(&thread, &mut sky).unwrap();
-
         
         let w = 1.0;
         let h = 1.0;
         let mut floor = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_plane(&thread, w, h, 1, 1).make_weak() }).unwrap();
-        floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &xtr_tile);
         floor.materials_mut()[0].shader = shader.clone();
         floor.set_transform(&(Matrix::translate(0.0, 0.0, 0.0) * Matrix::rotate_x(PI/2.0)));
 
@@ -177,16 +211,16 @@ impl Renderer {
         shader.set_shader_value(shader.get_shader_location("useAo"), 1);
         shader.set_shader_value(shader.locs()[ShaderLocationIndex::SHADER_LOC_VECTOR_VIEW as usize], Vector3::new(0.0, 0.0, 2.0f32.sqrt()));
         Renderer {
-            constants: Value::Null,
+            cs: constants,
             lights: lights,
             background_color: background_color,
             floor: floor,
             plane: plane,
             sphere: sphere,
-            xtr: xtr_tile,
-            sky: xtr_sky,
+            xtr_sky,
             locs: ShaderLocs {
                 use_tex_albedo: shader.get_shader_location("useTexAlbedo"),
+                use_tex_emissive: shader.get_shader_location("useTexEmissive"),
                 use_ao: shader.get_shader_location("useAo"),
                 cube_pos: shader.get_shader_location("cubePos"),
                 cube_size: shader.get_shader_location("cubeSize"),
@@ -211,7 +245,6 @@ impl Renderer {
                 shadow_light: shader.get_shader_location("shadow_light"),
             },
             shader: shader,
-
         }
     }
 
@@ -265,49 +298,14 @@ impl Renderer {
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
     }
 
-    fn get_p_color(self: &Self, s: &str, idx: usize) -> Color {
-        let hex: &str = (|| {
-            self.constants.get(s)?.as_array()?.get(idx)?.as_str()
-        })().unwrap_or("000000");
-        Color::from_hex(hex).unwrap_or(Color::BLACK)
-    }
-
-    fn get_color(self: &Self, s: &str) -> Color {
-        let hex: &str = (|| {
-            self.constants.get(s)?.as_str()
-        })().unwrap_or("000000");
-        Color::from_hex(hex).unwrap_or(Color::BLACK)
-    }
-
-    fn get_f32(self: &Self, s: &str) -> f32 {
-        (|| {
-            self.constants.get(s)?.as_f64()
-        })().unwrap_or(0.0) as f32
-    }
-
-    fn get_i32(self: &Self, s: &str) -> i32 {
-        (|| {
-            self.constants.get(s)?.as_i64()
-        })().unwrap_or(0) as i32
-    }
-
-    fn get_vec3(self: &Self, s: &str) -> Vector3 {
-        (|| {
-            let x = self.constants.get(s)?.as_array()?.get(0)?.as_f64()?;
-            let y = self.constants.get(s)?.as_array()?.get(1)?.as_f64()?;
-            let z = self.constants.get(s)?.as_array()?.get(2)?.as_f64()?;
-            Some(Vector3::new(x as f32, y as f32, z as f32))
-        })().unwrap_or(Vector3::zero())
-    }
-
     pub fn render_map(self: &mut Renderer, _3d: &mut RaylibMode3D<RaylibDrawHandle>, mouse_position: Vector3, interceptions: &Vec<Interception>, frame_counter: i64) {
         let mut tile_color = HashMap::new();
         for i in interceptions {
             let alpha = ((frame_counter - i.start_frame) as f32/INTERCEPT_DELAY as f32).min(1.0);
-            let c = self.get_color("tile_tint").color_normalize().lerp(self.get_p_color("message_color", i.player_id).color_normalize(), alpha);
-            let e = self.get_color("e_color").color_normalize().lerp(self.get_p_color("message_emission", i.player_id).color_normalize(), alpha);
-            let end_ep = self.get_f32(&format!("message_e_power{}", i.player_id));
-            let start_ep = self.get_f32("e_power");
+            let c = self.cs.get_color("tile_tint").color_normalize().lerp(self.cs.get_p_color("message_color", i.player_id).color_normalize(), alpha);
+            let e = self.cs.get_color("e_color").color_normalize().lerp(self.cs.get_p_color("message_emission", i.player_id).color_normalize(), alpha);
+            let end_ep = self.cs.get_f32(&format!("message_e_power{}", i.player_id));
+            let start_ep = self.cs.get_f32("e_power");
             let ep = start_ep + (end_ep - start_ep)*alpha;
             
             tile_color.insert((i.pos.x as i32, i.pos.y as i32), 
@@ -317,73 +315,78 @@ impl Renderer {
         }
 
         for s in station(0) {
-            tile_color.insert((s.x as i32, s.y as i32), (self.get_p_color("message_color", 0),
-                self.get_p_color("message_emission", 0).color_normalize(),
-                self.get_f32(&format!("message_e_power{}", 0))));
+            tile_color.insert((s.x as i32, s.y as i32), (self.cs.get_p_color("message_color", 0),
+                self.cs.get_p_color("message_emission", 0).color_normalize(),
+                self.cs.get_f32(&format!("message_e_power{}", 0))));
         }
 
         for s in station(1) {
-            tile_color.insert((s.x as i32, s.y as i32), (self.get_p_color("message_color", 1),
-                self.get_p_color("message_emission", 1).color_normalize(),
-                self.get_f32(&format!("message_e_power{}", 1))));
+            tile_color.insert((s.x as i32, s.y as i32), (self.cs.get_p_color("message_color", 1),
+                self.cs.get_p_color("message_emission", 1).color_normalize(),
+                self.cs.get_f32(&format!("message_e_power{}", 1))));
         }
 
         let rounded_mpos = rounded(vec2(mouse_position));
         if PLAY_AREA.contains_point(&rounded_mpos) {
-            tile_color.entry((rounded_mpos.x as i32, rounded_mpos.y as i32)).and_modify(|e| *e = (scale_color(e.0, self.get_f32("highlight_mult")), e.1, e.2));
+            tile_color.entry((rounded_mpos.x as i32, rounded_mpos.y as i32)).and_modify(|e| *e = (scale_color(e.0, self.cs.get_f32("highlight_mult")), e.1, e.2));
             tile_color.entry((rounded_mpos.x as i32, rounded_mpos.y as i32)).or_insert(
-                (scale_color(self.get_color("tile_tint"), self.get_f32("highlight_mult")), self.get_color("e_color").color_normalize(), self.get_f32("e_power")));
+                (scale_color(self.cs.get_color("tile_tint"), self.cs.get_f32("highlight_mult")), self.cs.get_color("e_color").color_normalize(), self.cs.get_f32("e_power")));
         }
 
-        self.shader.set_shader_value(self.locs.emissive_power, self.get_f32("e_power"));
-        self.shader.set_shader_value(self.locs.emissive_color, self.get_color("e_color").color_normalize());
+        self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32("e_power"));
+        self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_color("e_color").color_normalize());
+        self.shader.set_shader_value(self.locs.use_tex_albedo, 1);
         // PERF 1 plane 2 triangles
         for x in -12..=12 {
             for y in -12..=12 {
-                let mut c = self.get_color("tile_tint");
+                let mut c = Color::WHITE; //self.cs.get_color("tile_tint");
                 let mut reset_emissive = false;
                 if let Some((overwrite_c, e, ep)) = tile_color.get(&(x, y)) {
                     c = *overwrite_c;
                     self.shader.set_shader_value(self.locs.emissive_power, *ep);
                     self.shader.set_shader_value(self.locs.emissive_color, *e);
+                    self.shader.set_shader_value(self.locs.use_tex_albedo, 0);
                     reset_emissive = true;
                 }
                 self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
                 _3d.draw_model(&self.floor, Vector3::zero(), 1.0, c);
 
                 if reset_emissive {
-                    self.shader.set_shader_value(self.locs.emissive_power, self.get_f32("e_power"));
-                    self.shader.set_shader_value(self.locs.emissive_color, self.get_color("e_color").color_normalize());
+                    self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32("e_power"));
+                    self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_color("e_color").color_normalize());
+                    self.shader.set_shader_value(self.locs.use_tex_albedo, 1);
                 }
             }
         }
+        self.shader.set_shader_value(self.locs.use_tex_albedo, 0);
+        self.shader.set_shader_value(self.locs.use_tex_emissive, 0);
 
         self.plane.set_transform(&(Matrix::rotate_x(PI)));
         for x in -12..=12 {
-            _3d.draw_model(&self.plane, Vector3::new(x as f32, -12.5, -0.5), 1.0, self.get_color("cliff"));
+            _3d.draw_model(&self.plane, Vector3::new(x as f32, -12.5, -0.5), 1.0, self.cs.get_color("cliff"));
         }
         self.plane.set_transform(&(Matrix::rotate_z(PI/2.0)));
         for y in -12..=12 {
-            _3d.draw_model(&self.plane, Vector3::new(-12.5, y as f32, -0.5), 1.0, self.get_color("cliff"));
+            _3d.draw_model(&self.plane, Vector3::new(-12.5, y as f32, -0.5), 1.0, self.cs.get_color("cliff"));
         }
         self.shader.set_shader_value(self.locs.emissive_power, 0f32);
     }
     
     fn render_ships(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, game_state: &GameState, cube_z_offset: f32, cube_side_len: f32, cube: &mut Model, p_id: usize) {
-        self.shader.set_shader_value(self.locs.emissive_power, self.get_f32("message_e_power0"));
-        self.shader.set_shader_value(self.locs.emissive_color, self.get_p_color("message_emission", 0).color_normalize());
+        self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32("message_e_power0"));
+        self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", 0).color_normalize());
 
         let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
         self.shader.set_shader_value_v(self.locs.gcube_pos, &[vec3(*ship(0), cube_z_offset), vec3(*ship(1), cube_z_offset)]);
         self.shader.set_shader_value_v(self.locs.gcube_size, &[alpha(0), alpha(1)]);
 
         cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
-        _3d.draw_model(&cube, vec3(*ship(0), cube_z_offset), 1.0, self.get_p_color("message_color", 0));
+        _3d.draw_model(&cube, vec3(*ship(0), cube_z_offset), 1.0, self.cs.get_p_color("message_color", 0));
 
-        self.shader.set_shader_value(self.locs.emissive_power, self.get_f32("message_e_power1"));
-        self.shader.set_shader_value(self.locs.emissive_color, self.get_p_color("message_emission", 1).color_normalize());
+        self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32("message_e_power1"));
+        self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", 1).color_normalize());
         cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
-        _3d.draw_model(&cube, vec3(*ship(1), cube_z_offset), 1.0, self.get_p_color("message_color", 1));
+        _3d.draw_model(&cube, vec3(*ship(1), cube_z_offset), 1.0, self.cs.get_p_color("message_color", 1));
     
         self.shader.set_shader_value(self.locs.emissive_power, 0f32);
         cube.set_transform(&Matrix::identity());
@@ -391,9 +394,9 @@ impl Renderer {
         self.lights[0].enabled = 0;
         update_light(&mut self.shader, &self.lights[0]);
 
-        self.draw_cube_outline(_3d, vec3(*ship(p_id), 0.0), cube_side_len, cube_z_offset, self.get_color("selection"), self.get_f32("selection_thickness"));
+        self.draw_cube_outline(_3d, vec3(*ship(p_id), 0.0), cube_side_len, cube_z_offset, self.cs.get_color("selection"), self.cs.get_f32("selection_thickness"));
         for u in game_state.selection.iter().filter(|s| if let Selection::Unit(_) = s { true } else { false }).map(|s| if let Selection::Unit(u) = s { game_state.my_units[*u].clone() } else { panic!("impossible") }) {
-            self.draw_cube_outline(_3d, vec3(u.pos, 0.0), cube_side_len, cube_z_offset, self.get_color("selection"), self.get_f32("selection_thickness"));
+            self.draw_cube_outline(_3d, vec3(u.pos, 0.0), cube_side_len, cube_z_offset, self.cs.get_color("selection"), self.cs.get_f32("selection_thickness"));
         }
 
         self.lights[0].enabled = 1;
@@ -410,15 +413,15 @@ impl Renderer {
         } else {
             self.shader.set_shader_value(self.locs.num_cubes, 0);
         }
-        self.shader.set_shader_value(self.locs.emissive_power, self.get_f32(&format!("message_e_power{}", p_id)));
-        self.shader.set_shader_value(self.locs.emissive_color, self.get_p_color("message_emission", p_id).color_normalize());
+        self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", p_id)));
+        self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", p_id).color_normalize());
         for u in game_state.my_units.iter() {
-            _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, self.get_p_color("message_color", u.player_id));
+            _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, self.cs.get_p_color("message_color", u.player_id));
         }
-        self.shader.set_shader_value(self.locs.emissive_power, self.get_f32(&format!("message_e_power{}", other_id)));
-        self.shader.set_shader_value(self.locs.emissive_color, self.get_p_color("message_emission", other_id).color_normalize());
+        self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", other_id)));
+        self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", other_id).color_normalize());
         for u in game_state.other_units.iter() {
-            _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, self.get_p_color("message_color", u.player_id));
+            _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, self.cs.get_p_color("message_color", u.player_id));
         }
 
         self.shader.set_shader_value(self.locs.emissive_power, 0f32);
@@ -426,11 +429,11 @@ impl Renderer {
     }
 
     fn render_bounties(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, bounties: &Vec<Bounty>, frame_counter: i64) {
-        let bounty_z = self.get_f32("bounty_z") + self.get_f32("bounty_hover_d") * ((frame_counter as f32/60f32) * self.get_f32("bounty_hover_s")).sin();
+        let bounty_z = self.cs.get_f32("bounty_z") + self.cs.get_f32("bounty_hover_d") * ((frame_counter as f32/60f32) * self.cs.get_f32("bounty_hover_s")).sin();
         if bounties.len() <= 10 {
             self.shader.set_shader_value_v(self.locs.bounty_pos, bounties.iter().map(|b| vec3(b.pos, bounty_z)).collect::<Vec<_>>().as_slice());
             self.shader.set_shader_value(self.locs.num_bounties, bounties.len() as i32);
-            self.shader.set_shader_value(self.locs.bounty_r, self.get_f32("bounty_r"));
+            self.shader.set_shader_value(self.locs.bounty_r, self.cs.get_f32("bounty_r"));
         } else {
             self.shader.set_shader_value(self.locs.num_bounties, 0);
         }
@@ -441,31 +444,35 @@ impl Renderer {
                 BountyEnum::Gold => "gold",
                 BountyEnum::Lumber => "lumber",
             };
-            _3d.draw_model(&self.sphere, vec3(b.pos, bounty_z), self.get_f32("bounty_r"), self.get_color(k));
+            _3d.draw_model(&self.sphere, vec3(b.pos, bounty_z), self.cs.get_f32("bounty_r"), self.cs.get_color(k));
         }
     }
 
-
     pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState,
             interceptions: &Vec<Interception>, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo) {
-        self.constants = serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null);
+        self.cs = Constants(serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null));
 
-        self.shader.set_shader_value(self.locs.ao_intensity, self.get_f32("ao_intensity"));
-        self.shader.set_shader_value(self.locs.ao_stepsize, self.get_f32("ao_stepsize"));
-        self.shader.set_shader_value(self.locs.ao_iterations, self.get_i32("ao_iterations"));
-        self.shader.set_shader_value(self.locs.shadow_mint, self.get_f32("shadow_mint"));
-        self.shader.set_shader_value(self.locs.shadow_maxt, self.get_f32("shadow_maxt"));
-        self.shader.set_shader_value(self.locs.shadow_w, self.get_f32("shadow_w"));
-        self.shader.set_shader_value(self.locs.shadow_intensity, self.get_f32("shadow_intensity"));
-        self.shader.set_shader_value(self.locs.shadow_light, self.get_vec3("shadow_light"));
+        let mut tile = Image::gen_image_color(256, 256, self.cs.get_color("tile_tint"));
+        draw_border(&mut tile, scale_color(self.cs.get_color("tile_tint"), self.cs.get_f32("tile_border_mult")), self.cs.get_i32("tile_border_thickness"));
+        let xtr_tile = rl.load_texture_from_image(&thread, &mut tile).unwrap();
+        self.floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &xtr_tile);
 
-        self.lights[0].position = self.get_vec3("light_pos");
-        let lc = self.get_vec3("light_color");
+        self.shader.set_shader_value(self.locs.ao_intensity, self.cs.get_f32("ao_intensity"));
+        self.shader.set_shader_value(self.locs.ao_stepsize, self.cs.get_f32("ao_stepsize"));
+        self.shader.set_shader_value(self.locs.ao_iterations, self.cs.get_i32("ao_iterations"));
+        self.shader.set_shader_value(self.locs.shadow_mint, self.cs.get_f32("shadow_mint"));
+        self.shader.set_shader_value(self.locs.shadow_maxt, self.cs.get_f32("shadow_maxt"));
+        self.shader.set_shader_value(self.locs.shadow_w, self.cs.get_f32("shadow_w"));
+        self.shader.set_shader_value(self.locs.shadow_intensity, self.cs.get_f32("shadow_intensity"));
+        self.shader.set_shader_value(self.locs.shadow_light, self.cs.get_vec3("shadow_light"));
+
+        self.lights[0].position = self.cs.get_vec3("light_pos");
+        let lc = self.cs.get_vec3("light_color");
         self.lights[0].color = Vector4::new(lc.x, lc.y, lc.z, 1.0);
         update_light(&mut self.shader, &self.lights[0]);
-        self.shader.set_shader_value(self.locs.use_hdr_tone_map, self.get_i32("use_hdr_tone_map"));
-        self.shader.set_shader_value(self.locs.use_hdr_tone_map, self.get_i32("use_gamma"));
-        self.shader.set_shader_value(self.locs.light_mult, self.get_f32("light_mult"));
+        self.shader.set_shader_value(self.locs.use_hdr_tone_map, self.cs.get_i32("use_hdr_tone_map"));
+        self.shader.set_shader_value(self.locs.use_hdr_tone_map, self.cs.get_i32("use_gamma"));
+        self.shader.set_shader_value(self.locs.light_mult, self.cs.get_f32("light_mult"));
 
         self.shader.set_shader_value(self.locs.emissive_power, 0f32);
 
@@ -474,14 +481,14 @@ impl Renderer {
         let fps = rl.get_fps();
         let raw_mouse_position = rl.get_mouse_position();
 
-        let cube_side_len = self.get_f32("cube_size");
+        let cube_side_len = self.cs.get_f32("cube_size");
         let cube_size = Vector3::new(cube_side_len, cube_side_len, cube_side_len);
         let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, cube_size.x, cube_size.y, cube_size.z).make_weak() }).unwrap();
         cube.materials_mut()[0].shader = self.shader.clone();
 
         let mut _d = rl.begin_drawing(&thread);        
         _d.clear_background(self.background_color);
-        _d.draw_texture(&self.sky, 0, 0, Color::WHITE);
+        _d.draw_texture(&self.xtr_sky, 0, 0, Color::WHITE);
 
         let mut _3d = _d.begin_mode3D(Camera3D::orthographic(Vector3::zero(), Vector3::zero(), Vector3::zero(), 0.0));
         _3d.set_matrix_projection(&thread, Matrix::identity());
@@ -489,10 +496,10 @@ impl Renderer {
 
         self.render_map(&mut _3d, mouse_position, &interceptions, frame_counter);
 
-        let cube_side_len = self.get_f32("cube_size");
+        let cube_side_len = self.cs.get_f32("cube_size");
         let cube_size = Vector3::new(cube_side_len, cube_side_len, cube_side_len);
         self.shader.set_shader_value(self.locs.cube_size, cube_size);
-        let cube_z_offset = self.get_f32("cube_z_offset");
+        let cube_z_offset = self.cs.get_f32("cube_z_offset");
 
         self.render_ships(&mut _3d, game_state, cube_z_offset, cube_side_len, &mut cube, p_id);
 
@@ -518,9 +525,9 @@ impl Renderer {
         }
         if let MouseState::Intercept = mouse_state {
             let bring_front = rvec3(-0.01, -0.01, 0.01);
-            let c = self.get_p_color("message_color", p_id);
-            self.shader.set_shader_value(self.locs.emissive_color, self.get_p_color("message_emission", p_id).color_normalize());
-            self.shader.set_shader_value(self.locs.emissive_power, self.get_f32(&format!("message_e_power{}", p_id)));
+            let c = self.cs.get_p_color("message_color", p_id);
+            self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", p_id).color_normalize());
+            self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", p_id)));
             self.plane.set_transform(&Matrix::rotate_x(PI/2.0));
             _3d.draw_model(&self.plane, vec3(rounded(rvec2(mouse_position.x, mouse_position.y)), 0.0) + bring_front, 1.0, c);
         }

@@ -21,8 +21,9 @@
     "bounty_hover_s": 5,
 
     "tile_tint": "70e543",
-
-    "highlight_mult": 0.9,
+    "highlight_mult": 1.1,
+    "tile_border_mult": 0.9,
+    "tile_border_thickness": 8,
 
     "selection": "00ff00",
     "selection_thickness": 0.1,

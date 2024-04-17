@@ -146,9 +146,6 @@ vec4 ComputePBR()
         N = normalize(N*TBN);
     }
 
-    // vec3 emissive = vec3(0);
-    // emissive = (texture(emissiveMap, vec2(fragTexCoord.x*tiling.x+offset.x, fragTexCoord.y*tiling.y+offset.y)).rgb).g * emissiveColor.rgb*emissivePower * useTexEmissive;
-
     vec3 lightAccum = vec3(0.0);
     for (int i = 0; i < numOfLights; i++)
     {
@@ -183,6 +180,8 @@ vec4 ComputePBR()
     if (lights[0].enabled == 0) {
         return vec4(albedo, albedoAlpha);
     } else {
+        // vec3 emissive = emissiveColor.rgb;
+        // emissive = (texture(emissiveMap, vec2(fragTexCoord.x*tiling.x+offset.x, fragTexCoord.y*tiling.y+offset.y)).rgb).g * emissiveColor.rgb*emissivePower * useTexEmissive;
         return vec4(lightAccum + emissiveColor.rgb * emissivePower, albedoAlpha);
     }
 }
