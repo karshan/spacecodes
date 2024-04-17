@@ -22,7 +22,6 @@ use sc_types::constants::*;
 use types::*;
 
 use crate::render::Renderer;
-use crate::ui::*;
 
 struct Interception {
     start_frame: i64,
@@ -369,14 +368,6 @@ pub enum MouseState {
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
     let max_input_queue = 10;
-    let area_colors = HashMap::from([
-        (AreaEnum::P0Spawn, rcolor(0, 0x77, 0xb6, 100)),
-        (AreaEnum::P0Station, Color::from_hex("0077B6").unwrap()),
-        (AreaEnum::P1Spawn, rcolor(0x1b, 0x43, 0x32, 100)),
-        (AreaEnum::P1Station, Color::from_hex("1B4332").unwrap()),
-        (AreaEnum::Blocked, Color::from_hex("99a3a3").unwrap()), // 4d908e 3d348b 33415c 
-    ]);
-    let intercept_colors = [rcolor(0x90, 0xE0, 0xEF, 255), rcolor(0x74, 0xC6, 0x9D, 255)];
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -438,11 +429,9 @@ fn main() -> std::io::Result<()> {
     // ------------------------
     let mut interceptions = vec![];
     let mut mouse_state: MouseState = MouseState::None;
-    let mut ended = None;
     let mut game_ps = TimeWindowAvg::new();
     let mut shop_open = false;
     let mut rng: ChaCha20Rng = ChaCha20Rng::from_seed([0; 32]);
-    let shop = Shop::new(&mut rl, &thread).unwrap();
 
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
@@ -466,7 +455,6 @@ fn main() -> std::io::Result<()> {
 
         state = match state {
             ClientState::SendHello => {
-                ended = None;
                 socket_send(&socket, &server[0], &ClientPkt::Hello { seq: seq_state.send_seq, sent_time: rl.get_time() })?;
                 seq_state.send();
                 ClientState::ExpectWelcome
@@ -503,7 +491,6 @@ fn main() -> std::io::Result<()> {
                             sent_pkts.push(i as i64, vec![]);                            
                         }
                         last_rcvd_pkt = -1;
-                        ended = None;
                         interceptions = vec![];
                         mouse_state = MouseState::None;
                         shop_open = false;
@@ -831,8 +818,6 @@ fn main() -> std::io::Result<()> {
                 }
             },
             ClientState::Ended(end_state) => {
-                ended = Some(end_state); // For rendering
-                
                 if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
                     seq_state = Default::default();
                     ClientState::SendHello

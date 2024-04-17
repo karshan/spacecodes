@@ -199,10 +199,6 @@ impl Renderer {
 
         let mut sphere = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_sphere(&thread, 1.0, 32, 32).make_weak() }).unwrap();
         sphere.materials_mut()[0].shader = shader.clone();
-    
-        let mut ctr = 0;
-        let mut cube_pos = Vector3::new(0.0, 0.0, 0.5);
-        let mut cube_dir = Vector3::new(1.0, 0.0, 0.0);
         
         shader.set_shader_value(shader.get_shader_location("useTexNormal"), 0);
         shader.set_shader_value(shader.get_shader_location("useTexMRA"), 0);
@@ -471,7 +467,7 @@ impl Renderer {
         self.lights[0].color = Vector4::new(lc.x, lc.y, lc.z, 1.0);
         update_light(&mut self.shader, &self.lights[0]);
         self.shader.set_shader_value(self.locs.use_hdr_tone_map, self.cs.get_i32("use_hdr_tone_map"));
-        self.shader.set_shader_value(self.locs.use_hdr_tone_map, self.cs.get_i32("use_gamma"));
+        self.shader.set_shader_value(self.locs.use_gamma, self.cs.get_i32("use_gamma"));
         self.shader.set_shader_value(self.locs.light_mult, self.cs.get_f32("light_mult"));
 
         self.shader.set_shader_value(self.locs.emissive_power, 0f32);

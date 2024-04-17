@@ -1,26 +1,6 @@
-use std::collections::{HashMap, HashSet};
-
 use raylib::prelude::*;
 use sc_types::constants::PLAY_AREA;
-use sc_types::*;
 use sc_types::shapes::*;
-
-pub struct Bounties(HashMap<BountyEnum, Texture2D>);
-
-impl Bounties {
-    pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> Bounties {
-        Bounties(HashMap::from([
-            (BountyEnum::Blink, rl.load_texture(&thread, "sc-client/assets/blink_bounty.png").unwrap()),
-            (BountyEnum::Fuel, rl.load_texture(&thread, "sc-client/assets/fuel_bounty.png").unwrap()),
-            (BountyEnum::Lumber, rl.load_texture(&thread, "sc-client/assets/lumber_bounty.png").unwrap()),
-            (BountyEnum::Gold, rl.load_texture(&thread, "sc-client/assets/gold_bounty.png").unwrap()),
-        ]))
-    }
-
-    pub fn render(self: &Self, d: &mut RaylibDrawHandle, type_: BountyEnum, pos: Vector2) {
-        d.draw_texture_ex(&self.0[&type_], pos, 0f32, 1f32, Color::WHITE);
-    }
-}
 
 pub struct Icon {
     tex: Texture2D,
@@ -89,53 +69,6 @@ impl ShipSpellIcons {
         for (icon, c) in &self.0 {
             icon.render(d, Color::WHITE);
             d.draw_text(&c.to_string(), icon.pos.x.round() as i32, icon.pos.y.round() as i32, 1, Color::BLACK);
-        }
-    }
-}
-
-pub fn text_icon(rl: &mut RaylibHandle, thread: &RaylibThread, s: &str, pos: Vector2) -> Result<Icon, String> {
-    let img = Image::image_text(s, 20, Color::BLACK);
-    let tex = rl.load_texture_from_image(thread, &img)?;
-    Ok(Icon {
-        tex: tex,
-        pos: pos
-    })
-}
-
-pub struct Shop {
-    intercept_speed: Icon,
-    intercept_range: Icon,
-}
-
-impl Shop {
-    pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> Result<Shop, String> {
-        let first_pos = Vector2::new(PLAY_AREA.w as f32 - 200f32, PLAY_AREA.h as f32);
-        let gap = Vector2::new(0f32, 20f32);
-        Ok(Shop {
-            intercept_speed: text_icon(rl, thread, "I Speed", first_pos + gap)?,
-            intercept_range: text_icon(rl, thread, "I Range", first_pos + gap.scale_by(2f32))?,
-        })
-    }
-
-    pub fn click(self: &Self, mouse_position: Vector2) -> Option<ShopItem> {
-        if self.intercept_speed.rect().contains_point(&mouse_position) {
-            Some(ShopItem::Upgrade(Upgrade::InterceptSpeed))
-        } else if self.intercept_range.rect().contains_point(&mouse_position) {
-            Some(ShopItem::Upgrade(Upgrade::InterceptRange))
-        } else {
-            None
-        }
-    }
-
-    pub fn render(self: &Self, d: &mut RaylibDrawHandle, upgrades: &HashSet<Upgrade>, gold: f32) {
-        d.draw_line(800, PLAY_AREA.h, 800, PLAY_AREA.h + 200, Color::BLACK);
-        let col = Color::WHITE;
-        let nogold = rcolor(255, 255, 255, 100);
-        if !upgrades.contains(&Upgrade::InterceptSpeed) {
-            self.intercept_speed.render(d, if gold >= Upgrade::InterceptSpeed.cost() { col } else { nogold });
-        }
-        if !upgrades.contains(&Upgrade::InterceptRange) {
-            self.intercept_range.render(d, if gold >= Upgrade::InterceptRange.cost() { col } else { nogold });
         }
     }
 }
