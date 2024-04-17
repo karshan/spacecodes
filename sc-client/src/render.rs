@@ -144,6 +144,7 @@ pub struct Renderer {
     floor: Model,
     plane: Model,
     sphere: Model,
+    sky: Image,
     xtr_sky: Texture2D,
     locs: ShaderLocs,
 }
@@ -182,10 +183,6 @@ impl Renderer {
         let background_color = Color::from_hex("264653").unwrap();
     
         let constants = Constants(serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null));
-
-        let mut sky = Image::load_image("sc-client/assets/sky.png").unwrap();
-        sky.resize(rl.get_screen_width(), rl.get_screen_height());
-        let xtr_sky = rl.load_texture_from_image(&thread, &mut sky).unwrap();
         
         let w = 1.0;
         let h = 1.0;
@@ -199,6 +196,10 @@ impl Renderer {
 
         let mut sphere = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_sphere(&thread, 1.0, 32, 32).make_weak() }).unwrap();
         sphere.materials_mut()[0].shader = shader.clone();
+
+        let mut sky = Image::load_image("sc-client/assets/sky.png").unwrap();
+        sky.resize(rl.get_screen_width(), rl.get_screen_height());
+        let xtr_sky = rl.load_texture_from_image(&thread, &mut sky).unwrap();
         
         shader.set_shader_value(shader.get_shader_location("useTexNormal"), 0);
         shader.set_shader_value(shader.get_shader_location("useTexMRA"), 0);
@@ -213,6 +214,7 @@ impl Renderer {
             floor: floor,
             plane: plane,
             sphere: sphere,
+            sky,
             xtr_sky,
             locs: ShaderLocs {
                 use_tex_albedo: shader.get_shader_location("useTexAlbedo"),
@@ -445,13 +447,18 @@ impl Renderer {
     }
 
     pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState,
-            interceptions: &Vec<Interception>, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo) {
+            interceptions: &Vec<Interception>, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo, screen_changed: bool) {
         self.cs = Constants(serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null));
 
         let mut tile = Image::gen_image_color(256, 256, self.cs.get_color("tile_tint"));
         draw_border(&mut tile, scale_color(self.cs.get_color("tile_tint"), self.cs.get_f32("tile_border_mult")), self.cs.get_i32("tile_border_thickness"));
         let xtr_tile = rl.load_texture_from_image(&thread, &mut tile).unwrap();
         self.floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &xtr_tile);
+
+        if screen_changed {
+            self.sky.resize(rl.get_screen_width(), rl.get_screen_height());
+            self.xtr_sky = rl.load_texture_from_image(&thread, &mut self.sky).unwrap();
+        }
 
         self.shader.set_shader_value(self.locs.ao_intensity, self.cs.get_f32("ao_intensity"));
         self.shader.set_shader_value(self.locs.ao_stepsize, self.cs.get_f32("ao_stepsize"));

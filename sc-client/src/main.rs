@@ -357,6 +357,24 @@ fn path_lumber_cost(path: &VecDeque<Vector2>) -> i32 {
     }
 }
 
+fn set_non_fullscreen_window_size(rl: &mut RaylibHandle) {
+    let mon_idx = get_current_monitor();
+    let (mon_width, mon_height) = (get_monitor_width(mon_idx), get_monitor_height(mon_idx));
+    if mon_width >= 3840 && mon_height >= 2160 {
+        rl.set_window_size((3840 * 3)/4, (2160 * 3)/4);
+    } else if mon_width >= 2560 && mon_height >= 1440 {
+        rl.set_window_size((2560 * 3)/4, (1440 * 3)/4);
+    } else if mon_width >= 1920 && mon_height >= 1080 {
+        rl.set_window_size((1920 * 3)/4, (1080 * 3)/4);
+    } else if mon_width >= 1366 && mon_height >= 768 {
+        rl.set_window_size((1366 * 3)/4, (768 * 3)/4);
+    } else if mon_width >= 1024 && mon_height >= 768 {
+        rl.set_window_size((1024 * 3)/4, (576 * 3)/4);
+    } else {
+        rl.set_window_size(640, 360);
+    }
+}
+
 pub enum MouseState {
     Drag(Vector2),
     Path(VecDeque<Vector2>, bool),
@@ -387,12 +405,14 @@ fn main() -> std::io::Result<()> {
 
     let (mut rl, thread) = raylib::init()
         .size(1920, 1080)
-        // .fullscreen()
         .title("Space Codes")
         .msaa_4x()
         .build();
     // rl.set_trace_log(TraceLogLevel::LOG_ERROR);
+    rl.set_window_icon(Image::load_image("sc-client/assets/icon.png").unwrap());
     rl.set_target_fps(frame_rate);
+
+    set_non_fullscreen_window_size(&mut rl);
 
     let mut render = Renderer::new(&mut rl, &thread);
 
@@ -430,7 +450,6 @@ fn main() -> std::io::Result<()> {
     let mut interceptions = vec![];
     let mut mouse_state: MouseState = MouseState::None;
     let mut game_ps = TimeWindowAvg::new();
-    let mut shop_open = false;
     let mut rng: ChaCha20Rng = ChaCha20Rng::from_seed([0; 32]);
 
     let socket = UdpSocket::bind("0.0.0.0:0")?;
@@ -444,6 +463,7 @@ fn main() -> std::io::Result<()> {
 
     let start_time = Instant::now();
     let mut zoom = false;
+    let mut borderless = false;
     while !rl.window_should_close() {
         let raw_mouse_position = rl.get_mouse_position();
         let screen_width =  rl.get_screen_width() as f64;
@@ -452,6 +472,7 @@ fn main() -> std::io::Result<()> {
         let clip_mouse_position = Renderer::screen2clip(raw_mouse_position, screen_width, screen_height);
         let iso_proj = Renderer::iso_proj(screen_width, screen_height, zoom);
         let rounded_mouse_pos = Vector2::new(mouse_position.x.round(), mouse_position.y.round());
+        let mut screen_changed = false;
 
         state = match state {
             ClientState::SendHello => {
@@ -493,7 +514,6 @@ fn main() -> std::io::Result<()> {
                         last_rcvd_pkt = -1;
                         interceptions = vec![];
                         mouse_state = MouseState::None;
-                        shop_open = false;
                         rng = ChaCha20Rng::from_seed(rng_seed);
                         game_state = GameState {
                             my_units: vec![],
@@ -550,6 +570,7 @@ fn main() -> std::io::Result<()> {
                 let mut start_message_path = false;
                 let mut cancel = false;
                 let mut start_intercept = false;
+                screen_changed = false;
                 loop {
                     // TODO check max_input queue in unsent_pkt.push()
                     if unsent_pkt.len() >= max_input_queue {
@@ -559,6 +580,25 @@ fn main() -> std::io::Result<()> {
                     match rl.get_key_pressed() {
                         Some(k) => {
                             match k {
+                                KeyboardKey::KEY_P => {
+                                    zoom = !zoom;
+                                },
+                                KeyboardKey::KEY_ENTER => {
+                                    if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_ALT) {
+                                        let mon_idx = get_current_monitor();
+                                        if borderless {
+                                            rl.toggle_borderless_windowed();
+                                            set_non_fullscreen_window_size(&mut rl);
+                                            borderless = false;
+                                        } else {
+                                            let (mon_width, mon_height) = (get_monitor_width(mon_idx), get_monitor_height(mon_idx));
+                                            rl.set_window_size(mon_width, mon_height);
+                                            rl.toggle_borderless_windowed();
+                                            borderless = true;
+                                        }
+                                        screen_changed = true;
+                                    }
+                                }
                                 KeyboardKey::KEY_ONE => {
                                     game_state.selection = HashSet::new();
                                     game_state.selection.insert(Selection::Ship);
@@ -584,17 +624,13 @@ fn main() -> std::io::Result<()> {
                                         start_message_path = true
                                     }
                                 },
-                                KeyboardKey::KEY_P => {
-                                    zoom = !zoom;
-                                }
                                 KeyboardKey::KEY_W => {
                                     if game_state.gold[p_id] < INTERCEPT_COST {
                                         intercept_err = true;
                                     } else {
                                         start_intercept = true;
                                     }
-                                }
-                                KeyboardKey::KEY_S => { shop_open = !shop_open }
+                                },
                                 KeyboardKey::KEY_ESCAPE => {
                                     match mouse_state {
                                         MouseState::Path(_, _) => { cancel = true }
@@ -828,7 +864,7 @@ fn main() -> std::io::Result<()> {
         };
 
         render.render(&mut rl, &thread, frame_counter, p_id, &game_state, &interceptions, mouse_position, &mouse_state, &state, zoom,
-            &NetInfo { game_ps: &game_ps, waiting_avg: &waiting_avg, my_frame_delay });
+            &NetInfo { game_ps: &game_ps, waiting_avg: &waiting_avg, my_frame_delay }, screen_changed);
     }
     Ok(())
 }
