@@ -453,9 +453,6 @@ fn main() -> std::io::Result<()> {
     let mut waiting = Instant::now();
     let mut waiting_avg = WindowAvg::new(frame_rate as usize * 10);
 
-    fn vec2(v3: Vector3) -> Vector2 {
-        Vector2::new(v3.x, v3.y)
-    }
     let start_time = Instant::now();
     let mut zoom = false;
     while !rl.window_should_close() {

@@ -2,9 +2,22 @@ extern crate rmp_serde as rmps;
 
 use std::{collections::{HashMap, VecDeque}, hash::Hash, net::{SocketAddr, UdpSocket}, ops::AddAssign, slice::Iter, time::Instant};
 use num_traits::Zero;
-use raylib::math::Vector2;
+use raylib::{color::{rcolor, Color}, math::{Vector2, Vector3}};
 use sc_types::{ClientPkt, SeqState, ServerEnum, ServerPkt};
 use std::io;
+
+pub fn scale_color(a: Color, s: f32) -> Color {
+    let b = |x: u8| (x as f32 * s).round().min(255.0) as u8;
+    rcolor(b(a.r), b(a.g), b(a.b), a.a)
+}
+
+pub fn vec3(v2: Vector2, z: f32) -> Vector3 {
+    Vector3::new(v2.x, v2.y, z)
+}
+
+pub fn vec2(v3: Vector3) -> Vector2 {
+    Vector2::new(v3.x, v3.y)
+}
 
 pub fn rounded(v: Vector2) -> Vector2 {
     Vector2::new(v.x.round(), v.y.round())
