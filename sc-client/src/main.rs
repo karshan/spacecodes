@@ -156,11 +156,11 @@ fn deliver_messages(game_state: &mut GameState, p_id: usize) {
     let num_my_units = game_state.my_units.len() as i32;
     let num_other_units = game_state.other_units.len() as i32;
 
-    let my_bounties = game_state.my_units.iter_mut().filter(|u| same_tile(u.pos, *station(u.player_id)))
+    let my_bounties = game_state.my_units.iter_mut().filter(|u| station(u.player_id).iter().any(|s| same_tile(u.pos, *s)))
         .map(|u| { u.dead = true; u }).fold(HashMap::new(), |acc, e| hm_add(acc, &e.carrying_bounty));
     apply_bounties(game_state, p_id, my_bounties);
     reap(game_state);
-    let other_bounties = game_state.other_units.iter_mut().filter(|u| same_tile(u.pos, *station(u.player_id)))
+    let other_bounties = game_state.other_units.iter_mut().filter(|u| station(u.player_id).iter().any(|s| same_tile(u.pos, *s)))
         .map(|u| { u.dead = true; u }).fold(HashMap::new(), |acc, e| hm_add(acc, &e.carrying_bounty));
     apply_bounties(game_state, other_id, other_bounties);
     game_state.other_units.retain(|u| !u.dead);
@@ -304,8 +304,8 @@ fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
         let mut b = Vector2::new(rng.gen_range(PLAY_AREA.x..(PLAY_AREA.x + PLAY_AREA.w)) as f32, rng.gen_range(PLAY_AREA.y..(PLAY_AREA.y + PLAY_AREA.h)) as f32);
         while same_tile(*ship(0), b) ||
               same_tile(*ship(1), b) ||
-              same_tile(*station(0), b) ||
-              same_tile(*station(1), b) ||
+              station(0).iter().any(|s| same_tile(*s, b)) ||
+              station(1).iter().any(|s| same_tile(*s, b)) ||
                 game_state.bounties.iter().any(|existing_b| same_tile(existing_b.pos, b)) {
             b = Vector2::new(rng.gen_range(PLAY_AREA.x..(PLAY_AREA.x + PLAY_AREA.w)) as f32, rng.gen_range(PLAY_AREA.y..(PLAY_AREA.y + PLAY_AREA.h)) as f32);
         }
@@ -689,10 +689,11 @@ fn main() -> std::io::Result<()> {
                                     m = Vector2::new(mouse_position.x.round(), p.y.round());
                                 }
                                 path.push_back(m);
-                                if !(*station(p_id) == m) {
+                                if !(station(p_id).iter().any(|s| *s == m)) {
                                     path.push_back(Vector2::new(mouse_position.x.round(), mouse_position.y.round()));
                                 }
-                                if *station(p_id) == m || *station(p_id) == Vector2::new(mouse_position.x.round(), mouse_position.y.round()) {
+                                if  station(p_id).iter().any(|s| *s == m) ||
+                                    station(p_id).iter().any(|s| *s == Vector2::new(mouse_position.x.round(), mouse_position.y.round())) {
                                     if game_state.lumber[p_id] >= path_lumber_cost(&path) - MSG_FREE_LUMBER {
                                         unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
                                         MouseState::WaitReleaseLButton

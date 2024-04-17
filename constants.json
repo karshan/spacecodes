@@ -23,7 +23,7 @@
     "tile_tint": "70e543",
     "tile_highlight_tint": "92eb70",
     "selection": "00ff00",
-    "selection_thickness": 0.06,
+    "selection_thickness": 0.1,
 
     "cube_size": 0.5,
     "cube_z_offset": 0.5,

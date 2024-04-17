@@ -355,6 +355,12 @@ impl Renderer {
                 if interceptions.iter().filter(|i| frame_counter - i.start_frame >= INTERCEPT_DELAY).find(|i| i.pos.x == x as f32 && i.pos.y == y as f32).is_some() {
                     c = get_p_color("message_color", p_id);
                 }
+                if station(0).iter().any(|s| s.x == x as f32 && s.y == y as f32) {
+                    c = get_p_color("message_color", 0);
+                }
+                if station(1).iter().any(|s| s.x == x as f32 && s.y == y as f32) {
+                    c = get_p_color("message_color", 1);
+                }
                 self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
                 _3d.draw_model(&self.floor, Vector3::zero(), 1.0, c);
             }
@@ -395,9 +401,6 @@ impl Renderer {
         self.shader.set_shader_value(self.locs.emissive_power, 0.0);
 
         cube.set_transform(&Matrix::identity());
-
-        _3d.draw_cube(vec3(*station(0), 0.25), 0.1, 0.1, 0.5, ship_color(0).alpha(0.5));
-        _3d.draw_cube(vec3(*station(1), 0.25), 0.1, 0.1, 0.5, ship_color(1).alpha(0.5));
 
         self.lights[0].enabled = 0;
         update_light(&mut self.shader, &self.lights[0]);

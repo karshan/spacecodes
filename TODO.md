@@ -5,40 +5,37 @@
     * More fuel loss
     * Less fuel gain from fuel bounty
 
+#Visuals
+* [P1] Path's drawn as rectangle not lines
+* [P2] Message death animation (stop and fade out)
+
 #Features
- * [P1] latency based frame_delay
-    * send packets only every other frame
-    * Latency measurement doesnt account for out of order packets
- * [P1] Easily playable online
+ * [P1] Handle low frame_rate
+ 
+ * [P2] Resolution/fullscreen control. commandline flag or menu
+ 
+ * [P2] Show text error message if trying to intercept without enough gold/too close to enemy unit
+ * [P2] Give an indication when not enough lumber for path
+
+ * [P3] Easily playable online
     * Binary should check version with server on launch
     * Enter lobby code to join game
     * Ready -> 3,2,1
     * Host binary somewhere
- * [P1] Fullscreen/resolution scaling
- * [P1] Handle low frame_rate
- * [P1] Path's drawn as rectangle not thick lines
- * [P1] Map visual overhaul
- * [P2] Recover when packets from both clients are dropped on the same frame
- * [P2] Message death animation (stop and fade out)
- * [P2] Show text error message if trying to intercept without enough gold/too close to enemy unit
- * [P2] Give an indication when not enough lumber for path
+ * [P3] latency based frame_delay
+    * send packets only every other frame
+    * Latency measurement doesnt account for out of order packets
+ * [P3] Recover when packets from both clients are dropped on the same frame
  * [P3] "Cast Animations" for blink, message spawn, intercept. To ease latency.
+
  * [P3] Grapple (short range power shot to grab buffs)
  * [P3] Sound
- * [P3] Better intercept cursor ?
- * [P4] Ensure bounties don't spawn one sided (location)
- * [P4] Experiment flags for new features like grapple.
- * [P4] Allow clicking spell icons
 
 #Ideas
  * crossing rivers increases fuel gain for message/speed etc.
  * can intercept while drawing path
  * can stash incomplete/complete paths for later
  * Consider adding "undo last path point"
-
-#Bugs
- * [P3] Recover when packets from both clients are dropped on the same frame
- * [P4] move_unit() moves slower around turns
 
 #Hygiene
  * Add probability sampling util functions and use them in add_bounty
