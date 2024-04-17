@@ -404,7 +404,6 @@ fn main() -> std::io::Result<()> {
     }
 
     let (mut rl, thread) = raylib::init()
-        .size(1920, 1080)
         .title("Space Codes")
         .msaa_4x()
         .build();
