@@ -407,7 +407,7 @@ fn main() -> std::io::Result<()> {
         .title("Space Codes")
         .msaa_4x()
         .build();
-    // rl.set_trace_log(TraceLogLevel::LOG_ERROR);
+    rl.set_trace_log(TraceLogLevel::LOG_ERROR);
     rl.set_window_icon(Image::load_image_from_mem(".png", include_bytes!("../assets/icon.png")).unwrap());
     rl.set_target_fps(frame_rate);
 

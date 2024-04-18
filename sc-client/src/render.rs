@@ -146,6 +146,8 @@ pub struct Renderer {
     sphere: Model,
     sky: Image,
     xtr_sky: Texture2D,
+    tile: Image,
+    xtr_tile: Texture2D,
     locs: ShaderLocs,
 }
 
@@ -159,6 +161,19 @@ impl Renderer {
     fn load_constants() -> Constants {
         Constants(serde_json::from_str(include_str!("../../constants.json")).unwrap_or(Value::Null))
     }
+
+    #[cfg(debug_assertions)]
+    fn frame_load_constants(self: &mut Self, rl: &mut RaylibHandle, thread: &RaylibThread) {
+        self.cs = Constants(serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null));
+
+        self.tile = Image::gen_image_color(256, 256, self.cs.get_color("tile_tint"));
+        draw_border(&mut self.tile, scale_color(self.cs.get_color("tile_tint"), self.cs.get_f32("tile_border_mult")), self.cs.get_i32("tile_border_thickness"));
+        self.xtr_tile = rl.load_texture_from_image(&thread, &mut self.tile).unwrap();
+        self.floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &self.xtr_tile);
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn frame_load_constants(self: &Self, _rl: &mut RaylibHandle, _thread: &RaylibThread) { }
 
     pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> Renderer {
         let mut shader = rl.load_shader_from_memory(&thread, Some(include_str!("pbr.vert")), Some(include_str!("pbr.frag")));
@@ -208,6 +223,12 @@ impl Renderer {
         let mut sky = Image::load_image_from_mem(".png", include_bytes!("../assets/sky.png")).unwrap();
         sky.resize(rl.get_screen_width(), rl.get_screen_height());
         let xtr_sky = rl.load_texture_from_image(&thread, &mut sky).unwrap();
+
+        let cs = Renderer::load_constants();
+        let mut tile = Image::gen_image_color(256, 256, cs.get_color("tile_tint"));
+        draw_border(&mut tile, scale_color(cs.get_color("tile_tint"), cs.get_f32("tile_border_mult")), cs.get_i32("tile_border_thickness"));
+        let xtr_tile = rl.load_texture_from_image(&thread, &mut tile).unwrap();
+        floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &xtr_tile);
         
         shader.set_shader_value(shader.get_shader_location("useTexNormal"), 0);
         shader.set_shader_value(shader.get_shader_location("useTexMRA"), 0);
@@ -216,7 +237,7 @@ impl Renderer {
         shader.set_shader_value(shader.get_shader_location("useAo"), 1);
         shader.set_shader_value(shader.locs()[ShaderLocationIndex::SHADER_LOC_VECTOR_VIEW as usize], Vector3::new(0.0, 0.0, 2.0f32.sqrt()));
         Renderer {
-            cs: Renderer::load_constants(),
+            cs,
             lights: lights,
             background_color: background_color,
             floor: floor,
@@ -224,6 +245,8 @@ impl Renderer {
             sphere: sphere,
             sky,
             xtr_sky,
+            tile,
+            xtr_tile,
             locs: ShaderLocs {
                 use_tex_albedo: shader.get_shader_location("useTexAlbedo"),
                 use_tex_emissive: shader.get_shader_location("useTexEmissive"),
@@ -456,12 +479,7 @@ impl Renderer {
 
     pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState,
             interceptions: &Vec<Interception>, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo, screen_changed: bool) {
-        self.cs = Renderer::load_constants();
-
-        let mut tile = Image::gen_image_color(256, 256, self.cs.get_color("tile_tint"));
-        draw_border(&mut tile, scale_color(self.cs.get_color("tile_tint"), self.cs.get_f32("tile_border_mult")), self.cs.get_i32("tile_border_thickness"));
-        let xtr_tile = rl.load_texture_from_image(&thread, &mut tile).unwrap();
-        self.floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &xtr_tile);
+        self.frame_load_constants(rl, thread);
 
         if screen_changed {
             self.sky.resize(rl.get_screen_width(), rl.get_screen_height());
@@ -492,6 +510,7 @@ impl Renderer {
         let fps = rl.get_fps();
         let raw_mouse_position = rl.get_mouse_position();
 
+        // PERF put this inside frame_load_constants so it only happens every frame in debug builds
         let cube_side_len = self.cs.get_f32("cube_size");
         let cube_size = Vector3::new(cube_side_len, cube_side_len, cube_side_len);
         let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, cube_size.x, cube_size.y, cube_size.z).make_weak() }).unwrap();

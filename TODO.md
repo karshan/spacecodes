@@ -7,6 +7,8 @@
 
 #Visuals
 * [P1] Path's drawn as rectangle not lines
+* [P1] Show bounties being carried by messages
+* [P1] Intercept mine animation
 * [P2] Message death animation (stop and fade out)
 
 #Features
