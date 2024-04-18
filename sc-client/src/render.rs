@@ -150,8 +150,18 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    #[cfg(debug_assertions)]
+    fn load_constants() -> Constants {
+        Constants(serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null))
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn load_constants() -> Constants {
+        Constants(serde_json::from_str(include_str!("../../constants.json")).unwrap_or(Value::Null))
+    }
+
     pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> Renderer {
-        let mut shader = rl.load_shader(&thread, Some("sc-client/src/pbr.vert"), Some("sc-client/src/pbr.frag")).unwrap();
+        let mut shader = rl.load_shader_from_memory(&thread, Some(include_str!("pbr.vert")), Some(include_str!("pbr.frag")));
     
         shader.locs_mut()[ShaderLocationIndex::SHADER_LOC_MAP_ALBEDO as usize] = shader.get_shader_location("albedoMap");
         shader.locs_mut()[ShaderLocationIndex::SHADER_LOC_MAP_NORMAL as usize] = shader.get_shader_location("normalMap");
@@ -181,8 +191,6 @@ impl Renderer {
         }
     
         let background_color = Color::from_hex("264653").unwrap();
-    
-        let constants = Constants(serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null));
         
         let w = 1.0;
         let h = 1.0;
@@ -197,7 +205,7 @@ impl Renderer {
         let mut sphere = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_sphere(&thread, 1.0, 32, 32).make_weak() }).unwrap();
         sphere.materials_mut()[0].shader = shader.clone();
 
-        let mut sky = Image::load_image("sc-client/assets/sky.png").unwrap();
+        let mut sky = Image::load_image_from_mem(".png", include_bytes!("../assets/sky.png")).unwrap();
         sky.resize(rl.get_screen_width(), rl.get_screen_height());
         let xtr_sky = rl.load_texture_from_image(&thread, &mut sky).unwrap();
         
@@ -208,7 +216,7 @@ impl Renderer {
         shader.set_shader_value(shader.get_shader_location("useAo"), 1);
         shader.set_shader_value(shader.locs()[ShaderLocationIndex::SHADER_LOC_VECTOR_VIEW as usize], Vector3::new(0.0, 0.0, 2.0f32.sqrt()));
         Renderer {
-            cs: constants,
+            cs: Renderer::load_constants(),
             lights: lights,
             background_color: background_color,
             floor: floor,
@@ -448,7 +456,7 @@ impl Renderer {
 
     pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState,
             interceptions: &Vec<Interception>, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo, screen_changed: bool) {
-        self.cs = Constants(serde_json::from_str(&std::fs::read_to_string("constants.json").unwrap()).unwrap_or(Value::Null));
+        self.cs = Renderer::load_constants();
 
         let mut tile = Image::gen_image_color(256, 256, self.cs.get_color("tile_tint"));
         draw_border(&mut tile, scale_color(self.cs.get_color("tile_tint"), self.cs.get_f32("tile_border_mult")), self.cs.get_i32("tile_border_thickness"));
