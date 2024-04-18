@@ -16,6 +16,7 @@
 #Features
  * [P1] Handle low frame_rate
  * [P1] Unit selection rect only needs to intersect with message
+ * Path won't complete if a segment goes through station but end point/turnpoint are not in station
  
  * [P2] Resolution/fullscreen control. commandline flag or menu
  
