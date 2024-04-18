@@ -9,10 +9,13 @@
 * [P1] Path's drawn as rectangle not lines
 * [P1] Show bounties being carried by messages
 * [P1] Intercept mine animation
+* [P1] Show lumber cost
+* [P1] Show unit paths when selected
 * [P2] Message death animation (stop and fade out)
 
 #Features
  * [P1] Handle low frame_rate
+ * [P1] Unit selection rect only needs to intersect with message
  
  * [P2] Resolution/fullscreen control. commandline flag or menu
  
