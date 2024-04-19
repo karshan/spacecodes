@@ -296,6 +296,7 @@ impl Renderer {
         mouse_position
     }
 
+    // Returns Vec2 in clip space (-1,-1) -> (1,1)
     pub fn screen2clip(raw_mouse_position: Vector2, screen_width: f64, screen_height: f64) -> Vector2 {
         let screen2clip_mat = Matrix::translate(-1.0, 1.0, 0.0) *
             Matrix::scale(2.0/screen_width as f32, -2.0/screen_height as f32, 1.0);

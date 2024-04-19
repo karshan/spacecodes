@@ -1,8 +1,46 @@
-use std::{collections::VecDeque, net::UdpSocket, time::Instant};
+use std::{net::UdpSocket, time::Instant};
 
-use sc_types::{ClientPkt, GameCommand, SeqState};
+use sc_types::{ClientPkt, GameCommand, SeqState, ServerEnum};
 
-use crate::{socket_send, FrameMap, WindowAvg};
+use crate::{socket_recv, socket_send, ClientState, FrameMap, WindowAvg};
+
+pub fn handle_handshake(state: ClientState, socket: &UdpSocket, server: &Vec<std::net::SocketAddr>, seq_state: &mut SeqState, p_id: &mut usize)
+    // startGame with this seed
+    -> (Option<[u8; 32]>, ClientState) {
+    match state {
+        ClientState::SendHello => {
+            socket_send(&socket, &server[0], &ClientPkt::Hello { seq: seq_state.send_seq, sent_time: 0.0 }).unwrap();
+            seq_state.send();
+            (None, ClientState::ExpectWelcome)
+        },
+        ClientState::ExpectWelcome => {
+            let resp = socket_recv(&socket, &server[0], seq_state);
+            match resp {
+                None => (None, ClientState::ExpectWelcome),
+                Some(ServerEnum::Welcome { handshake_start_time: _, player_id }) => {
+                    *p_id = player_id;
+                    (None, ClientState::Waiting)
+                },
+                Some(_) => {
+                    panic!("Expected Welcome")
+                },
+            }
+        },
+        ClientState::Waiting => {
+            let resp = socket_recv(&socket, &server[0], seq_state);
+            match resp {
+                None => (None, ClientState::Waiting),
+                Some(ServerEnum::Start { rng_seed }) => {
+                    (Some(rng_seed), ClientState::Started)
+                },
+                Some(_) => {
+                    panic!("Expected Start")
+                }
+            }
+        },
+        _ => (None, state)
+    }
+}
 
 pub static MAX_PKT_QUEUE: usize = 40;
 pub struct NetState {
@@ -41,14 +79,6 @@ impl NetState {
         }
     }
 
-    pub fn recv(self: &mut Self, recv_frame: i32, frame_ack: i32, updates: &VecDeque<(i32, Vec<GameCommand>)>) {
-        self.waiting_avg.sample(self.waiting.elapsed().as_secs_f64());
-        self.waiting = Instant::now();
-        self.future_pkts.merge(&updates.clone());
-        self.unacked_pkts.retain(|ps| ps.0 > frame_ack);
-        self.last_rcvd_pkt = recv_frame;
-    }
-
     pub fn queue_command(self: &mut Self, command: GameCommand) {
         if self.unsent_pkt.len() < MAX_PKT_QUEUE {
             self.unsent_pkt.push(command);
@@ -57,6 +87,21 @@ impl NetState {
 
     pub fn process(self: &mut Self, frame_counter: i32, socket: &UdpSocket, server: &Vec<std::net::SocketAddr>, seq_state: &mut SeqState, frame_rate: u32) 
         -> Option<(Vec<GameCommand>, Vec<GameCommand>)> {
+        let resp = socket_recv(&socket, &server[0], seq_state);
+        match resp {
+            None => {}
+            Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay: _ }) => {
+                self.waiting_avg.sample(self.waiting.elapsed().as_secs_f64());
+                self.waiting = Instant::now();
+                self.future_pkts.merge(&updates.clone());
+                self.unacked_pkts.retain(|ps| ps.0 > frame_ack);
+                self.last_rcvd_pkt = frame;
+            },
+            Some(_) => {
+                panic!("Expected UpdateOtherTarget")
+            }
+        }
+
         if self.next_send_frame <= frame_counter {
             let mut dont_send = false;
             if let Some(new_frame_delay) = self.m_new_frame_delay {

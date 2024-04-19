@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::cmp::{min, max};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
-use net::NetState;
+use net::{handle_handshake, NetState};
 use rand_core::SeedableRng;
 use raylib::prelude::*;
 use sc_types::*;
@@ -369,6 +369,253 @@ pub enum MouseState {
     None
 }
 
+fn run_game(game_state: &mut GameState, interceptions: &mut Vec<Interception>, rng: &mut ChaCha20Rng, screen_changed: &mut bool, zoom: &mut bool, borderless: &mut bool,
+    rl: &mut RaylibHandle, p_id: usize, mouse_state: &mut MouseState, net: &mut NetState,
+    frame_counter: &mut i32, socket: &UdpSocket, server: &Vec<std::net::SocketAddr>, seq_state: &mut SeqState, frame_rate: u32,
+    game_ps: &mut TimeWindowAvg) -> ClientState {
+    let raw_mouse_position = rl.get_mouse_position();
+    let screen_width =  rl.get_screen_width() as f64;
+    let screen_height = rl.get_screen_height() as f64;
+    let mouse_position = Renderer::screen2world(raw_mouse_position, screen_width, screen_height, *zoom);
+    let clip_mouse_position = Renderer::screen2clip(raw_mouse_position, screen_width, screen_height);
+    let iso_proj = Renderer::iso_proj(screen_width, screen_height, *zoom);
+    let mouse_tile = Vector2::new(mouse_position.x.round(), mouse_position.y.round());
+    let mut start_message_path = false;
+    let mut cancel = false;
+    let mut start_intercept = false;
+    *screen_changed = false;
+    loop {
+        match rl.get_key_pressed() {
+            Some(k) => {
+                match k {
+                    KeyboardKey::KEY_P => {
+                        *zoom = !*zoom;
+                    },
+                    KeyboardKey::KEY_ENTER => {
+                        if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_ALT) {
+                            let mon_idx = get_current_monitor();
+                            if *borderless {
+                                rl.toggle_borderless_windowed();
+                                set_non_fullscreen_window_size(rl);
+                                *borderless = false;
+                            } else {
+                                let (mon_width, mon_height) = (get_monitor_width(mon_idx), get_monitor_height(mon_idx));
+                                rl.set_window_size(mon_width, mon_height);
+                                rl.toggle_borderless_windowed();
+                                *borderless = true;
+                            }
+                            *screen_changed = true;
+                        }
+                    }
+                    KeyboardKey::KEY_ONE => {
+                        game_state.selection = HashSet::new();
+                        game_state.selection.insert(Selection::Ship);
+                        game_state.sub_selection = Some(SubSelection::Ship);
+                    },
+                    KeyboardKey::KEY_TAB => {
+                        if let Some(subsel) = game_state.sub_selection {
+                            let mut choices = vec![];
+                            if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
+                                choices.push(SubSelection::Unit);
+                            }
+                            if game_state.selection.contains(&Selection::Ship) {
+                                choices.push(SubSelection::Ship);
+                            }
+                            if game_state.selection.contains(&Selection::Station) {
+                                choices.push(SubSelection::Station);
+                            }
+                            game_state.sub_selection = Some(choices[(choices.iter().enumerate().find(|(_, c)| **c == subsel).unwrap().0 + 1) % choices.len()]);
+                        }
+                    },
+                    KeyboardKey::KEY_Q => {
+                        if game_state.spawn_cooldown[p_id] <= 0 {
+                            start_message_path = true
+                        }
+                    },
+                    KeyboardKey::KEY_W => {
+                        if game_state.gold[p_id] < INTERCEPT_COST {
+                            // TODO show ui report error
+                        } else {
+                            start_intercept = true;
+                        }
+                    },
+                    KeyboardKey::KEY_ESCAPE => {
+                        match mouse_state {
+                            MouseState::Path(_, _) => { cancel = true }
+                            MouseState::Intercept => { cancel = true }
+                            _ => {}
+                        }
+                    },
+                    KeyboardKey::KEY_Z => {
+                        for (u_id, u) in selected_units(&game_state) {
+                            if u.blink_cooldown <= 0 && u.blinking.is_some() {
+                                net.queue_command(GameCommand::Blink(BlinkCommand { u_id }));
+                            }
+                        }
+                    },
+                    _ => {}
+                }
+            }
+            None => break
+        }
+    }
+
+    match mouse_state {
+        MouseState::None => {
+            if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+                *mouse_state = MouseState::Drag(raw_mouse_position);
+            } else if start_message_path {
+                *mouse_state = MouseState::Path(VecDeque::from(vec![*ship(p_id)]), true);
+            } else if start_intercept {
+                rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_CROSSHAIR);
+                *mouse_state = MouseState::Intercept;
+            } else {
+                *mouse_state = MouseState::None;
+            }
+        },
+        MouseState::Drag(start_pos) => {
+            if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+                *mouse_state = MouseState::Drag(*start_pos);
+            } else {
+                let start_pos_clip = Renderer::screen2clip(*start_pos, screen_width, screen_height);
+                let selection_pos = Vector2 { x: start_pos_clip.x.min(clip_mouse_position.x), y: start_pos_clip.y.min(clip_mouse_position.y) };
+                let selection_size = Vector2 { x: (start_pos_clip.x - clip_mouse_position.x).abs(), y: (start_pos_clip.y - clip_mouse_position.y).abs() };
+                let selection_rect = Rect { x: selection_pos.x, y: selection_pos.y, w: selection_size.x, h: selection_size.y };
+
+                // FIXME use cube_z_offset
+                fn unit_vec4(v2: Vector2) -> Vector4 { Vector4::new(v2.x, v2.y, 0.5, 1.0) }
+                fn unit_screen_pos(v4: Vector4) -> Vector2 { Vector2::new(v4.x, v4.y) }
+                let in_box: Vec<_> = game_state.my_units.iter().enumerate().filter(|(_, u)| selection_rect.contains_point(&unit_screen_pos(unit_vec4(u.pos).transform(iso_proj)))).map(|(i, _)| Selection::Unit(i)).collect();
+                if !in_box.is_empty() {
+                    if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
+                        game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
+                    } else {
+                        game_state.selection = HashSet::from_iter(in_box);
+                    }
+                }
+                if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
+                    game_state.sub_selection = Some(SubSelection::Unit);
+                } else {
+                    game_state.sub_selection = Some(SubSelection::Ship);
+                }
+                *mouse_state = MouseState::None;
+            }
+        },
+        MouseState::Path(path, y_first) => {
+            if cancel {
+                *mouse_state = MouseState::None;
+            } else {
+                if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
+                    *y_first = !*y_first;
+                } else if PLAY_AREA.contains_point(&mouse_tile) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+                    let p = path[path.len() - 1];
+                    let m: Vector2;
+                    if *y_first {
+                        m = Vector2::new(p.x.round(), mouse_position.y.round());
+                    } else {
+                        m = Vector2::new(mouse_position.x.round(), p.y.round());
+                    }
+                    path.push_back(m);
+                    if !(station(p_id).iter().any(|s| *s == m)) {
+                        path.push_back(Vector2::new(mouse_position.x.round(), mouse_position.y.round()));
+                    }
+                    if  station(p_id).iter().any(|s| *s == m) ||
+                        station(p_id).iter().any(|s| *s == Vector2::new(mouse_position.x.round(), mouse_position.y.round())) {
+                        if game_state.lumber[p_id] >= path_lumber_cost(&path) - MSG_FREE_LUMBER {
+                            net.queue_command(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
+                            *mouse_state = MouseState::WaitReleaseLButton;
+                        } else {
+                            // TODO show ui error not enought lumber
+                            *mouse_state = MouseState::WaitReleaseLButton;
+                        }
+                    }
+                }
+            }
+        },
+        MouseState::Intercept => {
+            if cancel {
+                rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
+                *mouse_state = MouseState::None;
+            } else if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+                if PLAY_AREA.contains_point(&mouse_tile) &&
+                        game_state.gold[p_id] >= INTERCEPT_COST {
+                    net.queue_command(GameCommand::Intercept(InterceptCommand { pos: mouse_tile }));
+                    rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
+                    *mouse_state = MouseState::WaitReleaseLButton;
+                } else {
+                    // TODO show error if not enough gold
+                    *mouse_state = MouseState::Intercept;
+                }
+            } else {
+                *mouse_state = MouseState::Intercept;
+            }
+        },
+        MouseState::WaitReleaseLButton => {
+            if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+                *mouse_state = MouseState::WaitReleaseLButton;
+            } else {
+                *mouse_state = MouseState::None;
+            }
+        }
+    };
+
+    // TODO use types to make sure sent/recvd packet can't be mistaken for each other
+    if let Some((sent_pkt, recvd_pkt)) = net.process(*frame_counter, &socket, &server, seq_state, frame_rate) {
+        if game_state.bounties.len() >= 10 {
+            game_state.spawn_bounties = false;
+        }
+        if game_state.bounties.len() < 6 {
+            game_state.spawn_bounties = true;
+        }
+        game_ps.sample();
+        apply_updates(game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, interceptions, *frame_counter);
+        
+        if (*frame_counter % (3 * 60)) == 0 {
+            add_bounty(game_state, rng);
+        }
+        move_units(&mut game_state.my_units);
+        move_units(&mut game_state.other_units);
+        deliver_messages(game_state, p_id);
+        collide_bounties(game_state);
+        tick(game_state);
+        *frame_counter += 1;
+        if *frame_counter % 60 == 0 {
+            socket_send(&socket, &server[0], &ClientPkt::StateHash { 
+                seq: seq_state.send_seq,
+                ack: seq_state.send_ack,
+                hash: crc32fast::hash(&serialize_state(&game_state, p_id).unwrap()),
+                frame: *frame_counter,
+            }).unwrap();
+            seq_state.send();
+        }
+    }
+
+    if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
+        socket_send(&socket, &server[0], &ClientPkt::Ended { 
+            seq: seq_state.send_seq,
+            ack: seq_state.send_ack,
+            frame: *frame_counter,
+        }).unwrap();
+        seq_state.send();
+
+        if game_state.intercepted.iter().all(|v| *v >= KILLS_TO_WIN) || game_state.fuel.iter().all(|f| *f <= 0) {
+            ClientState::Ended(None)
+        } else {
+            if game_state.fuel[0] <= 0 && game_state.fuel[1] > 0 {
+                ClientState::Ended(Some(1usize))
+            } else if game_state.fuel[0] > 0 && game_state.fuel[1] <= 0 {
+                ClientState::Ended(Some(0usize))
+            } else if game_state.intercepted[0] >= KILLS_TO_WIN {
+                ClientState::Ended(Some(0usize))
+            } else {
+                ClientState::Ended(Some(1usize))
+            }
+        }
+    } else {
+        ClientState::Started
+    }
+}
+
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
 
@@ -402,27 +649,12 @@ fn main() -> std::io::Result<()> {
 
     let mut state = ClientState::SendHello;
     // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
-    let mut game_state: GameState = GameState {
-        my_units: vec![],
-        other_units: vec![],
-        selection: HashSet::new(),
-        sub_selection: None,
-        fuel: [START_FUEL; 2],
-        intercepted: [0; 2],
-        gold: [STARTING_GOLD; 2],
-        lumber: [STARTING_LUMBER; 2],
-        upgrades: [HashSet::new(), HashSet::new()],
-        items: [HashMap::new(), HashMap::new()],
-        bounties: vec![],
-        spawn_bounties: true,
-        last_bounty: HashMap::new(),
-        spawn_cooldown: [0; 2],
-    };
+    let mut game_state: GameState = GameState::new();
+    let mut interceptions = vec![];
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i32 = 0;
     let mut net = NetState::new();
-    let mut interceptions = vec![];
     let mut mouse_state: MouseState = MouseState::None;
     let mut game_ps = TimeWindowAvg::new();
     let mut rng: ChaCha20Rng = ChaCha20Rng::from_seed([0; 32]);
@@ -439,319 +671,23 @@ fn main() -> std::io::Result<()> {
         let screen_width =  rl.get_screen_width() as f64;
         let screen_height = rl.get_screen_height() as f64;
         let mouse_position = Renderer::screen2world(raw_mouse_position, screen_width, screen_height, zoom);
-        let clip_mouse_position = Renderer::screen2clip(raw_mouse_position, screen_width, screen_height);
-        let iso_proj = Renderer::iso_proj(screen_width, screen_height, zoom);
-        let rounded_mouse_pos = Vector2::new(mouse_position.x.round(), mouse_position.y.round());
         let mut screen_changed = false;
 
-        state = match state {
-            ClientState::SendHello => {
-                socket_send(&socket, &server[0], &ClientPkt::Hello { seq: seq_state.send_seq, sent_time: rl.get_time() })?;
-                seq_state.send();
-                ClientState::ExpectWelcome
-            },
-            ClientState::ExpectWelcome => {
-                let resp = socket_recv(&socket, &server[0], &mut seq_state);
-                match resp {
-                    None => ClientState::ExpectWelcome,
-                    Some(ServerEnum::Welcome { handshake_start_time: _, player_id }) => {
-                        p_id = player_id;
-                        ClientState::Waiting
-                    },
-                    Some(_) => {
-                        panic!("Expected Welcome")
-                    },
-                }
-            },
-            ClientState::Waiting => {
-                let resp = socket_recv(&socket, &server[0], &mut seq_state);
-                match resp {
-                    None => ClientState::Waiting,
-                    Some(ServerEnum::Start { rng_seed }) => {
-                        frame_counter = 0;
-                        net = NetState::new();
-                        interceptions = vec![];
-                        mouse_state = MouseState::None;
-                        rng = ChaCha20Rng::from_seed(rng_seed);
-                        game_state = GameState {
-                            my_units: vec![],
-                            other_units: vec![],
-                            selection: HashSet::from([Selection::Ship]),
-                            sub_selection: Some(SubSelection::Ship),
-                            fuel: [START_FUEL; 2],
-                            intercepted: [0; 2],
-                            gold: [STARTING_GOLD; 2],
-                            lumber: [STARTING_LUMBER; 2],
-                            upgrades: [HashSet::new(), HashSet::new()],
-                            items: [HashMap::new(), HashMap::new()],
-                            bounties: vec![],
-                            spawn_bounties: true,
-                            last_bounty: HashMap::from([
-                                (BountyEnum::Blink, 0),
-                                (BountyEnum::Fuel, 0),
-                                (BountyEnum::Gold, 0),
-                                (BountyEnum::Lumber, 0)
-                            ]),
-                            spawn_cooldown: [0; 2],
-                        };
-                        ClientState::Started
-                    },
-                    Some(_) => {
-                        panic!("Expected Start")
-                    }
-                }
-            },
-            ClientState::Started => {
-                if game_state.bounties.len() >= 10 {
-                    game_state.spawn_bounties = false;
-                }
-                if game_state.bounties.len() < 6 {
-                    game_state.spawn_bounties = true;
-                }
-
-                let resp = socket_recv(&socket, &server[0], &mut seq_state);
-                match resp {
-                    None => {}
-                    Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay: _ }) => {
-                        net.recv(frame, frame_ack, &updates);
-                    },
-                    Some(_) => {
-                        panic!("Expected UpdateOtherTarget")
-                    }
-                }
-
-                let mut start_message_path = false;
-                let mut cancel = false;
-                let mut start_intercept = false;
-                screen_changed = false;
-                loop {
-                    match rl.get_key_pressed() {
-                        Some(k) => {
-                            match k {
-                                KeyboardKey::KEY_P => {
-                                    zoom = !zoom;
-                                },
-                                KeyboardKey::KEY_ENTER => {
-                                    if rl.is_key_down(KeyboardKey::KEY_LEFT_ALT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_ALT) {
-                                        let mon_idx = get_current_monitor();
-                                        if borderless {
-                                            rl.toggle_borderless_windowed();
-                                            set_non_fullscreen_window_size(&mut rl);
-                                            borderless = false;
-                                        } else {
-                                            let (mon_width, mon_height) = (get_monitor_width(mon_idx), get_monitor_height(mon_idx));
-                                            rl.set_window_size(mon_width, mon_height);
-                                            rl.toggle_borderless_windowed();
-                                            borderless = true;
-                                        }
-                                        screen_changed = true;
-                                    }
-                                }
-                                KeyboardKey::KEY_ONE => {
-                                    game_state.selection = HashSet::new();
-                                    game_state.selection.insert(Selection::Ship);
-                                    game_state.sub_selection = Some(SubSelection::Ship);
-                                },
-                                KeyboardKey::KEY_TAB => {
-                                    if let Some(subsel) = game_state.sub_selection {
-                                        let mut choices = vec![];
-                                        if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
-                                            choices.push(SubSelection::Unit);
-                                        }
-                                        if game_state.selection.contains(&Selection::Ship) {
-                                            choices.push(SubSelection::Ship);
-                                        }
-                                        if game_state.selection.contains(&Selection::Station) {
-                                            choices.push(SubSelection::Station);
-                                        }
-                                        game_state.sub_selection = Some(choices[(choices.iter().enumerate().find(|(_, c)| **c == subsel).unwrap().0 + 1) % choices.len()]);
-                                    }
-                                },
-                                KeyboardKey::KEY_Q => {
-                                    if game_state.spawn_cooldown[p_id] <= 0 {
-                                        start_message_path = true
-                                    }
-                                },
-                                KeyboardKey::KEY_W => {
-                                    if game_state.gold[p_id] < INTERCEPT_COST {
-                                        // TODO show ui report error
-                                    } else {
-                                        start_intercept = true;
-                                    }
-                                },
-                                KeyboardKey::KEY_ESCAPE => {
-                                    match mouse_state {
-                                        MouseState::Path(_, _) => { cancel = true }
-                                        MouseState::Intercept => { cancel = true }
-                                        _ => {}
-                                    }
-                                },
-                                KeyboardKey::KEY_Z => {
-                                    for (u_id, u) in selected_units(&game_state) {
-                                        if u.blink_cooldown <= 0 && u.blinking.is_some() {
-                                            net.queue_command(GameCommand::Blink(BlinkCommand { u_id }));
-                                        }
-                                    }
-                                },
-                                _ => {}
-                            }
-                        }
-                        None => break
-                    }
-                }
-
-                mouse_state = match mouse_state {
-                    MouseState::None => {
-                        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-                            MouseState::Drag(raw_mouse_position)
-                        } else if start_message_path {
-                            MouseState::Path(VecDeque::from(vec![*ship(p_id)]), true)
-                        } else if start_intercept {
-                            rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_CROSSHAIR);
-                            MouseState::Intercept
-                        } else {
-                            MouseState::None
-                        }
-                    },
-                    MouseState::Drag(start_pos) => {
-                        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-                            MouseState::Drag(start_pos)
-                        } else {
-                            let start_pos_clip = Renderer::screen2clip(start_pos, screen_width, screen_height);
-                            let selection_pos = Vector2 { x: start_pos_clip.x.min(clip_mouse_position.x), y: start_pos_clip.y.min(clip_mouse_position.y) };
-                            let selection_size = Vector2 { x: (start_pos_clip.x - clip_mouse_position.x).abs(), y: (start_pos_clip.y - clip_mouse_position.y).abs() };
-                            let selection_rect = Rect { x: selection_pos.x, y: selection_pos.y, w: selection_size.x, h: selection_size.y };
-
-                            // FIXME use cube_z_offset
-                            fn unit_vec4(v2: Vector2) -> Vector4 { Vector4::new(v2.x, v2.y, 0.5, 1.0) }
-                            fn unit_screen_pos(v4: Vector4) -> Vector2 { Vector2::new(v4.x, v4.y) }
-                            let in_box: Vec<_> = game_state.my_units.iter().enumerate().filter(|(_, u)| selection_rect.contains_point(&unit_screen_pos(unit_vec4(u.pos).transform(iso_proj)))).map(|(i, _)| Selection::Unit(i)).collect();
-                            if !in_box.is_empty() {
-                                if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
-                                    game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
-                                } else {
-                                    game_state.selection = HashSet::from_iter(in_box);
-                                }
-                            }
-                            if game_state.selection.iter().any(|s| if let Selection::Unit(_) = s { true } else { false }) {
-                                game_state.sub_selection = Some(SubSelection::Unit);
-                            } else {
-                                game_state.sub_selection = Some(SubSelection::Ship);
-                            }
-                            MouseState::None
-                        }
-                    },
-                    MouseState::Path(mut path, y_first) => {
-                        if cancel {
-                            MouseState::None
-                        } else {
-                            if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT) {
-                                MouseState::Path(path, !y_first)
-                            } else if PLAY_AREA.contains_point(&rounded_mouse_pos) && rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
-                                let p = path[path.len() - 1];
-                                let m: Vector2;
-                                if y_first {
-                                    m = Vector2::new(p.x.round(), mouse_position.y.round());
-                                } else {
-                                    m = Vector2::new(mouse_position.x.round(), p.y.round());
-                                }
-                                path.push_back(m);
-                                if !(station(p_id).iter().any(|s| *s == m)) {
-                                    path.push_back(Vector2::new(mouse_position.x.round(), mouse_position.y.round()));
-                                }
-                                if  station(p_id).iter().any(|s| *s == m) ||
-                                    station(p_id).iter().any(|s| *s == Vector2::new(mouse_position.x.round(), mouse_position.y.round())) {
-                                    if game_state.lumber[p_id] >= path_lumber_cost(&path) - MSG_FREE_LUMBER {
-                                        net.queue_command(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
-                                        MouseState::WaitReleaseLButton
-                                    } else {
-                                        // TODO show ui error not enought lumber
-                                        MouseState::WaitReleaseLButton
-                                    }
-                                } else {
-                                    MouseState::Path(path, y_first)
-                                }
-                            } else {
-                                MouseState::Path(path, y_first)
-                            }
-                        }
-                    },
-                    MouseState::Intercept => {
-                        if cancel {
-                            rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
-                            MouseState::None
-                        } else if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-                            if PLAY_AREA.contains_point(&rounded_mouse_pos) &&
-                                    game_state.gold[p_id] >= INTERCEPT_COST {
-                                net.queue_command(GameCommand::Intercept(InterceptCommand { pos: rounded_mouse_pos }));
-                                rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
-                                MouseState::WaitReleaseLButton
-                            } else {
-                                // TODO show error if not enough gold
-                                MouseState::Intercept
-                            }
-                        } else {
-                            MouseState::Intercept
-                        }
-                    },
-                    MouseState::WaitReleaseLButton => {
-                        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-                            MouseState::WaitReleaseLButton
-                        } else {
-                            MouseState::None
-                        }
-                    }
-                };
-
-                // TODO use types to make sure sent/recvd packet can't be mistaken for each other
-                if let Some((sent_pkt, recvd_pkt)) = net.process(frame_counter, &socket, &server, &mut seq_state, frame_rate) {
-                    game_ps.sample();
-                    apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
-                    
-                    if (frame_counter % (3 * 60)) == 0 {
-                        add_bounty(&mut game_state, &mut rng);
-                    }
-                    move_units(&mut game_state.my_units);
-                    move_units(&mut game_state.other_units);
-                    deliver_messages(&mut game_state, p_id);
-                    collide_bounties(&mut game_state);
-                    tick(&mut game_state);
-                    frame_counter += 1;
-                    if frame_counter % 60 == 0 {
-                        socket_send(&socket, &server[0], &ClientPkt::StateHash { 
-                            seq: seq_state.send_seq,
-                            ack: seq_state.send_ack,
-                            hash: crc32fast::hash(&serialize_state(&game_state, p_id).unwrap()),
-                            frame: frame_counter,
-                        })?;
-                        seq_state.send();
-                    }
-                }
-            
-                if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
-                    socket_send(&socket, &server[0], &ClientPkt::Ended { 
-                        seq: seq_state.send_seq,
-                        ack: seq_state.send_ack,
-                        frame: frame_counter,
-                    })?;
-                    seq_state.send();
+        let (m_start_with_seed, new_state) = handle_handshake(state, &socket, &server, &mut seq_state, &mut p_id);
+        state = new_state;
+        if let Some(rng_seed) = m_start_with_seed {
+            frame_counter = 0;
+            net = NetState::new();
+            interceptions = vec![];
+            mouse_state = MouseState::None;
+            rng = ChaCha20Rng::from_seed(rng_seed);
+            game_state = GameState::new();
+        }
     
-                    if game_state.intercepted.iter().all(|v| *v >= KILLS_TO_WIN) || game_state.fuel.iter().all(|f| *f <= 0) {
-                        ClientState::Ended(None)
-                    } else {
-                        if game_state.fuel[0] <= 0 && game_state.fuel[1] > 0 {
-                            ClientState::Ended(Some(1usize))
-                        } else if game_state.fuel[0] > 0 && game_state.fuel[1] <= 0 {
-                            ClientState::Ended(Some(0usize))
-                        } else if game_state.intercepted[0] >= KILLS_TO_WIN {
-                            ClientState::Ended(Some(0usize))
-                        } else {
-                            ClientState::Ended(Some(1usize))
-                        }
-                    }
-                } else {
-                    ClientState::Started
-                }
+        state = match state {
+            ClientState::Started => {
+                run_game(&mut game_state, &mut interceptions, &mut rng, &mut screen_changed, &mut zoom, &mut borderless,
+                    &mut rl, p_id, &mut mouse_state, &mut net, &mut frame_counter, &socket, &server, &mut seq_state, frame_rate, &mut game_ps)
             },
             ClientState::Ended(end_state) => {
                 if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
@@ -761,6 +697,7 @@ fn main() -> std::io::Result<()> {
                     ClientState::Ended(end_state)
                 }
             },
+            _ => state
         };
 
         render.render(&mut rl, &thread, frame_counter, p_id, &game_state, &interceptions, mouse_position, &mouse_state, &state, zoom,

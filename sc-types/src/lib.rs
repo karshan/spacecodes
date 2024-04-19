@@ -2,7 +2,7 @@
 extern crate serde_derive;
 
 use std::{collections::{HashMap, HashSet, VecDeque}, hash::Hash};
-use constants::{BLINK_COOLDOWN, MESSAGE_SIZE, MESSAGE_SPEED, MSG_FUEL};
+use constants::{BLINK_COOLDOWN, MESSAGE_SIZE, MESSAGE_SPEED, MSG_FUEL, STARTING_GOLD, STARTING_LUMBER, START_FUEL};
 use raylib::prelude::{Vector2, Color, rcolor};
 use rand_chacha::ChaCha20Rng;
 
@@ -159,6 +159,32 @@ pub struct GameState {
     pub bounties: Vec<Bounty>,
     pub last_bounty: HashMap<BountyEnum, i32>,
     pub spawn_bounties: bool,
+}
+
+impl GameState {
+    pub fn new() -> GameState {
+        GameState {
+            my_units: vec![],
+            other_units: vec![],
+            selection: HashSet::from([Selection::Ship]),
+            sub_selection: Some(SubSelection::Ship),
+            fuel: [START_FUEL; 2],
+            intercepted: [0; 2],
+            gold: [STARTING_GOLD; 2],
+            lumber: [STARTING_LUMBER; 2],
+            upgrades: [HashSet::new(), HashSet::new()],
+            items: [HashMap::new(), HashMap::new()],
+            bounties: vec![],
+            spawn_bounties: true,
+            last_bounty: HashMap::from([
+                (BountyEnum::Blink, 0),
+                (BountyEnum::Fuel, 0),
+                (BountyEnum::Gold, 0),
+                (BountyEnum::Lumber, 0)
+            ]),
+            spawn_cooldown: [0; 2],
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
