@@ -31,6 +31,7 @@ pub fn hm_add<K: Hash + Clone + Copy + Eq, V: AddAssign + Copy + Clone>(a: HashM
     out
 }
 
+// TODO move this to impl SeqState
 pub fn socket_recv(socket: &UdpSocket, expected_addr: &SocketAddr, seq_state: &mut SeqState) -> Option<ServerEnum> {
     let mut buf = [0u8; 16000];
     match socket.recv_from(&mut buf) {
@@ -54,6 +55,7 @@ pub fn socket_recv(socket: &UdpSocket, expected_addr: &SocketAddr, seq_state: &m
     }
 }
 
+// TODO move this to impl SeqState
 pub fn socket_send(socket: &UdpSocket, addr: &SocketAddr, pkt: &ClientPkt) -> Result<usize, std::io::Error> {
     match rmp_serde::encode::to_vec(pkt) {
         Ok(buf) => socket.send_to(&buf, addr),

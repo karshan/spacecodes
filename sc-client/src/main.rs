@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::cmp::{min, max};
 use std::net::{ToSocketAddrs, UdpSocket};
 use std::env;
-use std::time::Instant;
+use net::NetState;
 use rand_core::SeedableRng;
 use raylib::prelude::*;
 use sc_types::*;
@@ -14,6 +14,7 @@ use rand::*;
 mod util;
 mod types;
 mod render;
+mod net;
 
 use util::*;
 use sc_types::constants::*;
@@ -370,7 +371,6 @@ pub enum MouseState {
 
 fn main() -> std::io::Result<()> {
     let frame_rate = 60;
-    let max_input_queue = 10;
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -421,16 +421,7 @@ fn main() -> std::io::Result<()> {
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i32 = 0;
-    // TODO All this netcode related stuff should be abstracted into a single type
-    let mut next_send_frame = 0;
-    let mut unsent_pkt = vec![];
-    let mut unacked_pkts: FrameMap<Vec<GameCommand>> = FrameMap::new();
-    let mut future_pkts: FrameMap<Vec<GameCommand>> = FrameMap::new();
-    let mut sent_pkts: FrameMap<Vec<GameCommand>> = FrameMap::new();
-    let mut last_rcvd_pkt = -1;
-    let mut my_frame_delay = 1u8;
-    let mut m_new_frame_delay = None;
-    // ------------------------
+    let mut net = NetState::new();
     let mut interceptions = vec![];
     let mut mouse_state: MouseState = MouseState::None;
     let mut game_ps = TimeWindowAvg::new();
@@ -440,8 +431,6 @@ fn main() -> std::io::Result<()> {
     socket.set_nonblocking(true)?;
 
     rl.set_exit_key(None);
-    let mut waiting = Instant::now();
-    let mut waiting_avg = WindowAvg::new(frame_rate as usize * 10);
 
     let mut zoom = false;
     let mut borderless = false;
@@ -480,19 +469,7 @@ fn main() -> std::io::Result<()> {
                     None => ClientState::Waiting,
                     Some(ServerEnum::Start { rng_seed }) => {
                         frame_counter = 0;
-                        next_send_frame = 0;
-                        unsent_pkt = vec![];
-                        unacked_pkts = FrameMap::new();
-                        future_pkts = FrameMap::new();
-                        sent_pkts = FrameMap::new();
-                        my_frame_delay = 1;
-                        m_new_frame_delay = None;
-                        waiting = Instant::now();
-                        for i in 0..my_frame_delay {
-                            future_pkts.push(i as i32, vec![]);
-                            sent_pkts.push(i as i32, vec![]);                            
-                        }
-                        last_rcvd_pkt = -1;
+                        net = NetState::new();
                         interceptions = vec![];
                         mouse_state = MouseState::None;
                         rng = ChaCha20Rng::from_seed(rng_seed);
@@ -536,11 +513,7 @@ fn main() -> std::io::Result<()> {
                 match resp {
                     None => {}
                     Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay: _ }) => {
-                        waiting_avg.sample(waiting.elapsed().as_secs_f64());
-                        waiting = Instant::now();
-                        future_pkts.merge(&updates.clone());
-                        unacked_pkts.retain(|ps| ps.0 > frame_ack);
-                        last_rcvd_pkt = frame;
+                        net.recv(frame, frame_ack, &updates);
                     },
                     Some(_) => {
                         panic!("Expected UpdateOtherTarget")
@@ -552,11 +525,6 @@ fn main() -> std::io::Result<()> {
                 let mut start_intercept = false;
                 screen_changed = false;
                 loop {
-                    // TODO check max_input queue in unsent_pkt.push()
-                    if unsent_pkt.len() >= max_input_queue {
-                        break;
-                    }
-
                     match rl.get_key_pressed() {
                         Some(k) => {
                             match k {
@@ -621,7 +589,7 @@ fn main() -> std::io::Result<()> {
                                 KeyboardKey::KEY_Z => {
                                     for (u_id, u) in selected_units(&game_state) {
                                         if u.blink_cooldown <= 0 && u.blinking.is_some() {
-                                            unsent_pkt.push(GameCommand::Blink(BlinkCommand { u_id }));
+                                            net.queue_command(GameCommand::Blink(BlinkCommand { u_id }));
                                         }
                                     }
                                 },
@@ -694,7 +662,7 @@ fn main() -> std::io::Result<()> {
                                 if  station(p_id).iter().any(|s| *s == m) ||
                                     station(p_id).iter().any(|s| *s == Vector2::new(mouse_position.x.round(), mouse_position.y.round())) {
                                     if game_state.lumber[p_id] >= path_lumber_cost(&path) - MSG_FREE_LUMBER {
-                                        unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
+                                        net.queue_command(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
                                         MouseState::WaitReleaseLButton
                                     } else {
                                         // TODO show ui error not enought lumber
@@ -715,7 +683,7 @@ fn main() -> std::io::Result<()> {
                         } else if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
                             if PLAY_AREA.contains_point(&rounded_mouse_pos) &&
                                     game_state.gold[p_id] >= INTERCEPT_COST {
-                                unsent_pkt.push(GameCommand::Intercept(InterceptCommand { pos: rounded_mouse_pos }));
+                                net.queue_command(GameCommand::Intercept(InterceptCommand { pos: rounded_mouse_pos }));
                                 rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                                 MouseState::WaitReleaseLButton
                             } else {
@@ -735,49 +703,11 @@ fn main() -> std::io::Result<()> {
                     }
                 };
 
-                if next_send_frame <= frame_counter {
-                    let mut dont_send = false;
-                    if let Some(new_frame_delay) = m_new_frame_delay {
-                        if new_frame_delay > my_frame_delay {
-                            for i in my_frame_delay..new_frame_delay {
-                                unacked_pkts.push(frame_counter + i as i32, vec![]);
-                                sent_pkts.push(frame_counter + i as i32, vec![]);
-                            }
-                            m_new_frame_delay = None;
-                            my_frame_delay = new_frame_delay;
-                        } else {
-                            if sent_pkts.iter().any(|(f, _)| *f >= frame_counter + new_frame_delay as i32) {
-                                dont_send = true;
-                            } else {
-                                m_new_frame_delay = None;
-                                my_frame_delay = new_frame_delay;
-                            }
-                        }
-                    }
-                    if !dont_send {
-                        unacked_pkts.push(frame_counter + my_frame_delay as i32, unsent_pkt.clone());
-                        socket_send(&socket, &server[0], &ClientPkt::Target { 
-                            seq: seq_state.send_seq,
-                            ack: seq_state.send_ack,
-                            updates: unacked_pkts.cloned_vecdeque(),
-                            frame: frame_counter + my_frame_delay as i32,
-                            frame_ack: last_rcvd_pkt,
-                            frame_delay: my_frame_delay
-                        })?;
-                        seq_state.send();
-                        sent_pkts.push(frame_counter + my_frame_delay as i32, unsent_pkt.clone());
-                        unsent_pkt = vec![];
-                    }
-                    next_send_frame += 1;
-                }
-
-                if (next_send_frame > frame_counter) && future_pkts.iter().any(|ps| ps.0 == frame_counter) {
+                // TODO use types to make sure sent/recvd packet can't be mistaken for each other
+                if let Some((sent_pkt, recvd_pkt)) = net.process(frame_counter, &socket, &server, &mut seq_state, frame_rate) {
                     game_ps.sample();
-                    let recvd_pkt = future_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
-                    let sent_pkt = sent_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
                     apply_updates(&mut game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, &mut interceptions, frame_counter);
-                    future_pkts.retain(|ps| ps.0 > frame_counter);
-                    sent_pkts.retain(|ps| ps.0 > frame_counter);
+                    
                     if (frame_counter % (3 * 60)) == 0 {
                         add_bounty(&mut game_state, &mut rng);
                     }
@@ -795,15 +725,6 @@ fn main() -> std::io::Result<()> {
                             frame: frame_counter,
                         })?;
                         seq_state.send();
-                    }
-                }
-
-                let waiting_one_pct_max = f64::min(waiting_avg.one_percent_max(), 300f64/1000f64);
-                if m_new_frame_delay.is_none() {
-                    let new_delay = (waiting_one_pct_max * (frame_rate as f64)).ceil() as i32;
-                    let mfd = my_frame_delay as i32;
-                    if new_delay > mfd || new_delay < mfd/2 {
-                        m_new_frame_delay = Some(new_delay as u8);
                     }
                 }
             
@@ -843,7 +764,7 @@ fn main() -> std::io::Result<()> {
         };
 
         render.render(&mut rl, &thread, frame_counter, p_id, &game_state, &interceptions, mouse_position, &mouse_state, &state, zoom,
-            &NetInfo { game_ps: &game_ps, waiting_avg: &waiting_avg, my_frame_delay }, screen_changed);
+            &NetInfo { game_ps: &game_ps, waiting_avg: &net.waiting_avg, my_frame_delay: net.my_frame_delay }, screen_changed);
     }
     Ok(())
 }
