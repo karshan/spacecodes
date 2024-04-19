@@ -12,9 +12,7 @@ use rand_chacha::*;
 use rand::*;
 
 mod util;
-mod pathfinding;
 mod types;
-mod ui;
 mod render;
 
 use util::*;
@@ -181,16 +179,6 @@ fn tick(game_state: &mut GameState) {
     game_state.spawn_cooldown.iter_mut().for_each(|s| *s = max(*s - 1, 0));
 }
 
-fn collide_units(units: &Vec<Unit>, p: &Vector2, s: &Vector2) -> Vec<usize> {
-    let mut out: Vec<usize> = vec![];
-    for (i, u) in units.iter().enumerate() {
-        if (Rect { x: p.x, y: p.y, w: s.x, h: s.y }).collide(&Rect { x: u.pos.x, y: u.pos.y, w: u.size().x, h: u.size().y }) {
-            out.push(i);
-        }
-    }
-    out
-}
-
 fn selected_units(game_state: &GameState) -> Vec<(usize, Unit)> {
     let mut out = vec![];
     for s in &game_state.selection {
@@ -310,10 +298,6 @@ fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
         }
         game_state.bounties.push(Bounty { type_: t_to_spawn, amount: t_to_spawn.amount(rng), pos: b });
     } 
-}
-
-fn bounty_rect(b: &Vector2) -> Rect<i32> {
-    Rect { x: b.x.round() as i32, y: b.y.round() as i32, w: BOUNTY_SIZE.x.round() as i32, h: BOUNTY_SIZE.y.round() as i32 }
 }
 
 fn collide_bounties(game_state: &mut GameState) {
@@ -456,12 +440,9 @@ fn main() -> std::io::Result<()> {
     socket.set_nonblocking(true)?;
 
     rl.set_exit_key(None);
-    let mut intercept_err = false;
-    let mut not_enough_lumber = false;
     let mut waiting = Instant::now();
     let mut waiting_avg = WindowAvg::new(frame_rate as usize * 10);
 
-    let start_time = Instant::now();
     let mut zoom = false;
     let mut borderless = false;
     while !rl.window_should_close() {
@@ -554,7 +535,7 @@ fn main() -> std::io::Result<()> {
                 let resp = socket_recv(&socket, &server[0], &mut seq_state);
                 match resp {
                     None => {}
-                    Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay }) => {
+                    Some(ServerEnum::UpdateOtherTarget { updates, frame, frame_ack, frame_delay: _ }) => {
                         waiting_avg.sample(waiting.elapsed().as_secs_f64());
                         waiting = Instant::now();
                         future_pkts.merge(&updates.clone());
@@ -566,7 +547,6 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                intercept_err = false;
                 let mut start_message_path = false;
                 let mut cancel = false;
                 let mut start_intercept = false;
@@ -626,7 +606,7 @@ fn main() -> std::io::Result<()> {
                                 },
                                 KeyboardKey::KEY_W => {
                                     if game_state.gold[p_id] < INTERCEPT_COST {
-                                        intercept_err = true;
+                                        // TODO show ui report error
                                     } else {
                                         start_intercept = true;
                                     }
@@ -652,7 +632,6 @@ fn main() -> std::io::Result<()> {
                     }
                 }
 
-                not_enough_lumber = false;
                 mouse_state = match mouse_state {
                     MouseState::None => {
                         if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
@@ -677,8 +656,8 @@ fn main() -> std::io::Result<()> {
 
                             // FIXME use cube_z_offset
                             fn unit_vec4(v2: Vector2) -> Vector4 { Vector4::new(v2.x, v2.y, 0.5, 1.0) }
-                            fn unit_screen_pos(v4: Vector4) -> Vector2 { Vector2::new(v4.x, v4.y) };
-                            let mut in_box: Vec<_> = game_state.my_units.iter().enumerate().filter(|(_, u)| selection_rect.contains_point(&unit_screen_pos(unit_vec4(u.pos).transform(iso_proj)))).map(|(i, _)| Selection::Unit(i)).collect();
+                            fn unit_screen_pos(v4: Vector4) -> Vector2 { Vector2::new(v4.x, v4.y) }
+                            let in_box: Vec<_> = game_state.my_units.iter().enumerate().filter(|(_, u)| selection_rect.contains_point(&unit_screen_pos(unit_vec4(u.pos).transform(iso_proj)))).map(|(i, _)| Selection::Unit(i)).collect();
                             if !in_box.is_empty() {
                                 if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) || rl.is_key_down(KeyboardKey::KEY_RIGHT_SHIFT) {
                                     game_state.selection = game_state.selection.symmetric_difference(&HashSet::from_iter(in_box)).cloned().collect();
@@ -718,7 +697,7 @@ fn main() -> std::io::Result<()> {
                                         unsent_pkt.push(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
                                         MouseState::WaitReleaseLButton
                                     } else {
-                                        not_enough_lumber = true;
+                                        // TODO show ui error not enought lumber
                                         MouseState::WaitReleaseLButton
                                     }
                                 } else {
@@ -740,7 +719,7 @@ fn main() -> std::io::Result<()> {
                                 rl.set_mouse_cursor(MouseCursor::MOUSE_CURSOR_DEFAULT);
                                 MouseState::WaitReleaseLButton
                             } else {
-                                intercept_err = true;
+                                // TODO show error if not enough gold
                                 MouseState::Intercept
                             }
                         } else {

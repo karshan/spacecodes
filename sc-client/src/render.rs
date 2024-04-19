@@ -110,7 +110,7 @@ impl Constants {
 }
 
 pub struct ShaderLocs {
-    use_ao: i32,
+    _use_ao: i32,
     use_tex_albedo: i32,
     use_tex_emissive: i32,
     num_cubes: i32,
@@ -250,7 +250,7 @@ impl Renderer {
             locs: ShaderLocs {
                 use_tex_albedo: shader.get_shader_location("useTexAlbedo"),
                 use_tex_emissive: shader.get_shader_location("useTexEmissive"),
-                use_ao: shader.get_shader_location("useAo"),
+                _use_ao: shader.get_shader_location("useAo"),
                 cube_pos: shader.get_shader_location("cubePos"),
                 cube_size: shader.get_shader_location("cubeSize"),
                 gcube_pos: shader.get_shader_location("gcubePos"),
