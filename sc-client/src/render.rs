@@ -9,8 +9,8 @@ use crate::{rounded, scale_color, vec2, vec3, ClientState, Interception, MouseSt
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub enum LightType {
-    LIGHT_DIRECTIONAL = 0,
-    LIGHT_POINT
+    LightDirectional = 0,
+    LightPoint
 }
 
 #[repr(C)]
@@ -192,10 +192,10 @@ impl Renderer {
         shader.set_shader_value(shader.get_shader_location("tiling"), Vector2::new(0.5, 0.5));
     
         let mut lights: Vec<Light> = vec![];
-        lights.push(create_light(LightType::LIGHT_DIRECTIONAL, Vector3::new(-0.5, -0.6, 0.4), Vector3::new(0.0, 0.0, 0.0), Color::WHITE, 6.5, &mut shader, 0));
-        lights.push(create_light(LightType::LIGHT_POINT, Vector3::new(5.0, -5.0, 5.0), Vector3::new(0.0, 0.0, 0.0), Color::WHITE, 3.3, &mut shader, 1));
-        lights.push(create_light(LightType::LIGHT_POINT, Vector3::new(-5.0, 5.0, 5.0), Vector3::new(0.0, 0.0, 0.0), Color::WHITE, 8.3, &mut shader, 2));
-        lights.push(create_light(LightType::LIGHT_POINT, Vector3::new(5.0, 5.0, 5.0), Vector3::new(0.0, 0.0, 0.0), Color::WHITE, 2.0, &mut shader, 3));
+        lights.push(create_light(LightType::LightDirectional, Vector3::new(-0.5, -0.6, 0.4), Vector3::new(0.0, 0.0, 0.0), Color::WHITE, 6.5, &mut shader, 0));
+        lights.push(create_light(LightType::LightPoint, Vector3::new(5.0, -5.0, 5.0), Vector3::new(0.0, 0.0, 0.0), Color::WHITE, 3.3, &mut shader, 1));
+        lights.push(create_light(LightType::LightPoint, Vector3::new(-5.0, 5.0, 5.0), Vector3::new(0.0, 0.0, 0.0), Color::WHITE, 8.3, &mut shader, 2));
+        lights.push(create_light(LightType::LightPoint, Vector3::new(5.0, 5.0, 5.0), Vector3::new(0.0, 0.0, 0.0), Color::WHITE, 2.0, &mut shader, 3));
     
         lights[1].enabled = 0;
         lights[2].enabled = 0;
@@ -327,7 +327,7 @@ impl Renderer {
         _3d.draw_model(&self.plane, pos, 1.0, highlight_color);
     }
 
-    pub fn render_map(self: &mut Renderer, _3d: &mut RaylibMode3D<RaylibDrawHandle>, mouse_position: Vector3, interceptions: &Vec<Interception>, frame_counter: i64) {
+    pub fn render_map(self: &mut Renderer, _3d: &mut RaylibMode3D<RaylibDrawHandle>, mouse_position: Vector3, interceptions: &Vec<Interception>, frame_counter: i32) {
         let mut tile_color = HashMap::new();
         for i in interceptions {
             let alpha = ((frame_counter - i.start_frame) as f32/INTERCEPT_DELAY as f32).min(1.0);
@@ -457,7 +457,7 @@ impl Renderer {
 
     }
 
-    fn render_bounties(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, bounties: &Vec<Bounty>, frame_counter: i64) {
+    fn render_bounties(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, bounties: &Vec<Bounty>, frame_counter: i32) {
         let bounty_z = self.cs.get_f32("bounty_z") + self.cs.get_f32("bounty_hover_d") * ((frame_counter as f32/60f32) * self.cs.get_f32("bounty_hover_s")).sin();
         if bounties.len() <= 10 {
             self.shader.set_shader_value_v(self.locs.bounty_pos, bounties.iter().map(|b| vec3(b.pos, bounty_z)).collect::<Vec<_>>().as_slice());
@@ -477,7 +477,7 @@ impl Renderer {
         }
     }
 
-    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i64, p_id: usize, game_state: &GameState,
+    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i32, p_id: usize, game_state: &GameState,
             interceptions: &Vec<Interception>, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo, screen_changed: bool) {
         self.frame_load_constants(rl, thread);
 

@@ -24,7 +24,7 @@ use types::*;
 use crate::render::Renderer;
 
 struct Interception {
-    start_frame: i64,
+    start_frame: i32,
     pos: Vector2,
     player_id: usize,
 }
@@ -75,7 +75,7 @@ fn move_units(units: &mut Vec<Unit>) {
     );
 }
 
-fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_id: usize, interceptions: &mut Vec<Interception>, frame: i64) {
+fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_id: usize, interceptions: &mut Vec<Interception>, frame: i32) {
     for i in 0..=1 {
         for u in updates[i] {
             let units = if p_id == i { &mut game_state.my_units } else { &mut game_state.other_units };
@@ -116,7 +116,7 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
     }
 
     for intercept in &mut *interceptions {
-        if frame - intercept.start_frame >= INTERCEPT_DELAY as i64 {
+        if frame - intercept.start_frame >= INTERCEPT_DELAY as i32 {
             let other_units = if p_id == intercept.player_id { &mut game_state.other_units } else { &mut game_state.my_units };
             for unit in other_units.iter_mut() {
                 // Have to check unit.dead to avoid double counting interception kills (If 2 interceptions kill the same unit on the same frame)
@@ -436,7 +436,7 @@ fn main() -> std::io::Result<()> {
     };
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
-    let mut frame_counter: i64 = 0;
+    let mut frame_counter: i32 = 0;
     // TODO All this netcode related stuff should be abstracted into a single type
     let mut next_send_frame = 0;
     let mut unsent_pkt = vec![];
@@ -508,8 +508,8 @@ fn main() -> std::io::Result<()> {
                         m_new_frame_delay = None;
                         waiting = Instant::now();
                         for i in 0..my_frame_delay {
-                            future_pkts.push(i as i64, vec![]);
-                            sent_pkts.push(i as i64, vec![]);                            
+                            future_pkts.push(i as i32, vec![]);
+                            sent_pkts.push(i as i32, vec![]);                            
                         }
                         last_rcvd_pkt = -1;
                         interceptions = vec![];
@@ -761,13 +761,13 @@ fn main() -> std::io::Result<()> {
                     if let Some(new_frame_delay) = m_new_frame_delay {
                         if new_frame_delay > my_frame_delay {
                             for i in my_frame_delay..new_frame_delay {
-                                unacked_pkts.push(frame_counter + i as i64, vec![]);
-                                sent_pkts.push(frame_counter + i as i64, vec![]);
+                                unacked_pkts.push(frame_counter + i as i32, vec![]);
+                                sent_pkts.push(frame_counter + i as i32, vec![]);
                             }
                             m_new_frame_delay = None;
                             my_frame_delay = new_frame_delay;
                         } else {
-                            if sent_pkts.iter().any(|(f, _)| *f >= frame_counter + new_frame_delay as i64) {
+                            if sent_pkts.iter().any(|(f, _)| *f >= frame_counter + new_frame_delay as i32) {
                                 dont_send = true;
                             } else {
                                 m_new_frame_delay = None;
@@ -776,17 +776,17 @@ fn main() -> std::io::Result<()> {
                         }
                     }
                     if !dont_send {
-                        unacked_pkts.push(frame_counter + my_frame_delay as i64, unsent_pkt.clone());
+                        unacked_pkts.push(frame_counter + my_frame_delay as i32, unsent_pkt.clone());
                         socket_send(&socket, &server[0], &ClientPkt::Target { 
                             seq: seq_state.send_seq,
                             ack: seq_state.send_ack,
                             updates: unacked_pkts.cloned_vecdeque(),
-                            frame: frame_counter + my_frame_delay as i64,
+                            frame: frame_counter + my_frame_delay as i32,
                             frame_ack: last_rcvd_pkt,
                             frame_delay: my_frame_delay
                         })?;
                         seq_state.send();
-                        sent_pkts.push(frame_counter + my_frame_delay as i64, unsent_pkt.clone());
+                        sent_pkts.push(frame_counter + my_frame_delay as i32, unsent_pkt.clone());
                         unsent_pkt = vec![];
                     }
                     next_send_frame += 1;

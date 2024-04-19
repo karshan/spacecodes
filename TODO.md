@@ -61,4 +61,3 @@
  * Packed bools and structs
  * maximise cache utilization, iterate through units just once per frame
  * function inlining?
- * frame type i64->u32

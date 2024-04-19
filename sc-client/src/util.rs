@@ -61,32 +61,32 @@ pub fn socket_send(socket: &UdpSocket, addr: &SocketAddr, pkt: &ClientPkt) -> Re
     }
 }
 
-pub struct FrameMap<T>(Vec<(i64, T)>);
+pub struct FrameMap<T>(Vec<(i32, T)>);
 
 impl<T: Clone + PartialEq> FrameMap<T> {
     pub fn new() -> FrameMap<T> {
         FrameMap(vec![])
     }
 
-    pub fn iter<'a>(self: &'a Self) -> Iter<'a, (i64, T)> {
+    pub fn iter<'a>(self: &'a Self) -> Iter<'a, (i32, T)> {
         self.0.iter()
     }
 
     pub fn retain<F>(self: &mut Self, f: F)
     where
-        F: FnMut(&(i64, T)) -> bool,
+        F: FnMut(&(i32, T)) -> bool,
     {
         self.0.retain(f)
     }
 
-    pub fn push(self: &mut Self, k: i64, v: T) {
+    pub fn push(self: &mut Self, k: i32, v: T) {
         if self.0.iter().any(|(f, _)| *f == k) {
             panic!("trying to overwrite frame in FrameMap");
         }
         self.0.push((k, v));
     }
 
-    pub fn merge(self: &mut Self, other: &VecDeque<(i64, T)>) {
+    pub fn merge(self: &mut Self, other: &VecDeque<(i32, T)>) {
         for (k, v) in other {
             match self.0.iter().find(|(f, _)| *f == *k) {
                 Some((_, existing_v)) => {
@@ -101,7 +101,7 @@ impl<T: Clone + PartialEq> FrameMap<T> {
         }
     }
 
-    pub fn cloned_vecdeque(self: &Self) -> VecDeque<(i64, T)> {
+    pub fn cloned_vecdeque(self: &Self) -> VecDeque<(i32, T)> {
         VecDeque::from(self.0.clone())
     }
 }
