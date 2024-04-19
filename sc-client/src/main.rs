@@ -52,14 +52,13 @@ fn main() -> std::io::Result<()> {
 
     let mut state = ClientState::SendHello;
     // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
-    let mut game_state: GameState = GameState::new();
+    let mut game_state: GameState = GameState::new(ChaCha20Rng::from_seed([0; 32]));
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i32 = 0;
     let mut net = NetState::new();
     let mut mouse_state: MouseState = MouseState::None;
     let mut game_ps = TimeWindowAvg::new();
-    let mut rng: ChaCha20Rng = ChaCha20Rng::from_seed([0; 32]);
 
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_nonblocking(true)?;
@@ -81,13 +80,12 @@ fn main() -> std::io::Result<()> {
             frame_counter = 0;
             net = NetState::new();
             mouse_state = MouseState::None;
-            rng = ChaCha20Rng::from_seed(rng_seed);
-            game_state = GameState::new();
+            game_state = GameState::new(ChaCha20Rng::from_seed(rng_seed));
         }
     
         state = match state {
             ClientState::Started => {
-                run_game(&mut game_state, &mut rng, &mut screen_changed, &mut zoom, &mut borderless,
+                run_game(&mut game_state, &mut screen_changed, &mut zoom, &mut borderless,
                     &mut rl, p_id, &mut mouse_state, &mut net, &mut frame_counter, &socket, &server, &mut seq_state, frame_rate, &mut game_ps)
             },
             ClientState::Ended(end_state) => {

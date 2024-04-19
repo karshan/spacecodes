@@ -6,7 +6,6 @@ use raylib::prelude::*;
 use sc_types::*;
 use sc_types::shapes::*;
 extern crate rmp_serde as rmps;
-use rand_chacha::*;
 use rand::*;
 
 use crate::util::*;
@@ -249,7 +248,8 @@ fn bounty_counts(bounties: &Vec<Bounty>) -> Vec<(BountyEnum, usize)> {
     out
 }
 
-fn add_bounty(game_state: &mut GameState, rng: &mut ChaCha20Rng) {
+fn add_bounty(game_state: &mut GameState) {
+    let rng = &mut game_state.rng;
     if game_state.spawn_bounties {
         let counts = bounty_counts(&game_state.bounties);
         let existing_dist: Vec<(BountyEnum, f32)> = if game_state.bounties.is_empty() {
@@ -357,7 +357,7 @@ pub enum MouseState {
     None
 }
 
-pub fn run_game(game_state: &mut GameState, rng: &mut ChaCha20Rng, screen_changed: &mut bool, zoom: &mut bool, borderless: &mut bool,
+pub fn run_game(game_state: &mut GameState, screen_changed: &mut bool, zoom: &mut bool, borderless: &mut bool,
     rl: &mut RaylibHandle, p_id: usize, mouse_state: &mut MouseState, net: &mut NetState,
     frame_counter: &mut i32, socket: &UdpSocket, server: &Vec<std::net::SocketAddr>, seq_state: &mut SeqState, frame_rate: u32,
     game_ps: &mut TimeWindowAvg) -> ClientState {
@@ -559,7 +559,7 @@ pub fn run_game(game_state: &mut GameState, rng: &mut ChaCha20Rng, screen_change
         apply_updates(game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, *frame_counter);
         
         if (*frame_counter % (3 * 60)) == 0 {
-            add_bounty(game_state, rng);
+            add_bounty(game_state);
         }
         move_units(&mut game_state.my_units);
         move_units(&mut game_state.other_units);

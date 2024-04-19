@@ -167,10 +167,11 @@ pub struct GameState {
     pub last_bounty: HashMap<BountyEnum, i32>,
     pub spawn_bounties: bool,
     pub interceptions: Vec<Interception>,
+    pub rng: ChaCha20Rng,
 }
 
 impl GameState {
-    pub fn new() -> GameState {
+    pub fn new(rng: ChaCha20Rng) -> GameState {
         GameState {
             my_units: vec![],
             other_units: vec![],
@@ -192,6 +193,7 @@ impl GameState {
             ]),
             interceptions: vec![],
             spawn_cooldown: [0; 2],
+            rng,
         }
     }
 }
