@@ -22,12 +22,6 @@ use types::*;
 
 use crate::render::Renderer;
 
-struct Interception {
-    start_frame: i32,
-    pos: Vector2,
-    player_id: usize,
-}
-
 fn blink_unit(unit: &mut Unit) -> () {
     unit.blinking.iter_mut().for_each(|b| *b = false);
     if (unit.path[0] - unit.pos).length() < BLINK_RANGE {
@@ -74,7 +68,7 @@ fn move_units(units: &mut Vec<Unit>) {
     );
 }
 
-fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_id: usize, interceptions: &mut Vec<Interception>, frame: i32) {
+fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_id: usize, frame: i32) {
     for i in 0..=1 {
         for u in updates[i] {
             let units = if p_id == i { &mut game_state.my_units } else { &mut game_state.other_units };
@@ -99,7 +93,7 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
                     game_state.lumber[*player_id] -= max(0, path_lumber_cost(path) - MSG_FREE_LUMBER);
                 },
                 GameCommand::Intercept(InterceptCommand { pos }) => {
-                    interceptions.push(Interception { pos: pos.clone(), start_frame: frame, player_id: i });
+                    game_state.interceptions.push(Interception { pos: pos.clone(), start_frame: frame, player_id: i });
                     game_state.gold[i] -= INTERCEPT_COST;
                 },
                 GameCommand::BuyUpgrade(u) => {
@@ -114,7 +108,7 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
         }
     }
 
-    for intercept in &mut *interceptions {
+    for intercept in &mut game_state.interceptions {
         if frame - intercept.start_frame >= INTERCEPT_DELAY as i32 {
             let other_units = if p_id == intercept.player_id { &mut game_state.other_units } else { &mut game_state.my_units };
             for unit in other_units.iter_mut() {
@@ -128,7 +122,7 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
             }
         }
     }
-    interceptions.retain(|i| (frame - i.start_frame) < INTERCEPT_EXPIRY + INTERCEPT_DELAY);
+    game_state.interceptions.retain(|i| (frame - i.start_frame) < INTERCEPT_EXPIRY + INTERCEPT_DELAY);
     reap(game_state);
     game_state.other_units.retain(|u| !u.dead);
 }
@@ -369,7 +363,7 @@ pub enum MouseState {
     None
 }
 
-fn run_game(game_state: &mut GameState, interceptions: &mut Vec<Interception>, rng: &mut ChaCha20Rng, screen_changed: &mut bool, zoom: &mut bool, borderless: &mut bool,
+fn run_game(game_state: &mut GameState, rng: &mut ChaCha20Rng, screen_changed: &mut bool, zoom: &mut bool, borderless: &mut bool,
     rl: &mut RaylibHandle, p_id: usize, mouse_state: &mut MouseState, net: &mut NetState,
     frame_counter: &mut i32, socket: &UdpSocket, server: &Vec<std::net::SocketAddr>, seq_state: &mut SeqState, frame_rate: u32,
     game_ps: &mut TimeWindowAvg) -> ClientState {
@@ -568,7 +562,7 @@ fn run_game(game_state: &mut GameState, interceptions: &mut Vec<Interception>, r
             game_state.spawn_bounties = true;
         }
         game_ps.sample();
-        apply_updates(game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, interceptions, *frame_counter);
+        apply_updates(game_state, if p_id == 0 { [&sent_pkt, &recvd_pkt] } else { [&recvd_pkt, &sent_pkt] }, p_id, *frame_counter);
         
         if (*frame_counter % (3 * 60)) == 0 {
             add_bounty(game_state, rng);
@@ -650,7 +644,6 @@ fn main() -> std::io::Result<()> {
     let mut state = ClientState::SendHello;
     // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
     let mut game_state: GameState = GameState::new();
-    let mut interceptions = vec![];
     let mut p_id = 0usize;
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i32 = 0;
@@ -678,7 +671,6 @@ fn main() -> std::io::Result<()> {
         if let Some(rng_seed) = m_start_with_seed {
             frame_counter = 0;
             net = NetState::new();
-            interceptions = vec![];
             mouse_state = MouseState::None;
             rng = ChaCha20Rng::from_seed(rng_seed);
             game_state = GameState::new();
@@ -686,7 +678,7 @@ fn main() -> std::io::Result<()> {
     
         state = match state {
             ClientState::Started => {
-                run_game(&mut game_state, &mut interceptions, &mut rng, &mut screen_changed, &mut zoom, &mut borderless,
+                run_game(&mut game_state, &mut rng, &mut screen_changed, &mut zoom, &mut borderless,
                     &mut rl, p_id, &mut mouse_state, &mut net, &mut frame_counter, &socket, &server, &mut seq_state, frame_rate, &mut game_ps)
             },
             ClientState::Ended(end_state) => {
@@ -700,7 +692,7 @@ fn main() -> std::io::Result<()> {
             _ => state
         };
 
-        render.render(&mut rl, &thread, frame_counter, p_id, &game_state, &interceptions, mouse_position, &mouse_state, &state, zoom,
+        render.render(&mut rl, &thread, frame_counter, p_id, &game_state, mouse_position, &mouse_state, &state, zoom,
             &NetInfo { game_ps: &game_ps, waiting_avg: &net.waiting_avg, my_frame_delay: net.my_frame_delay }, screen_changed);
     }
     Ok(())

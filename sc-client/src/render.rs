@@ -479,7 +479,7 @@ impl Renderer {
     }
 
     pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i32, p_id: usize, game_state: &GameState,
-            interceptions: &Vec<Interception>, mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo, screen_changed: bool) {
+            mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo, screen_changed: bool) {
         self.frame_load_constants(rl, thread);
 
         if screen_changed {
@@ -527,7 +527,7 @@ impl Renderer {
         _3d.set_matrix_projection(&thread, Matrix::identity());
         _3d.set_matrix_modelview(&thread, Renderer::iso_proj(screen_width, screen_height, zoom));
 
-        self.render_map(&mut _3d, mouse_position, &interceptions, frame_counter);
+        self.render_map(&mut _3d, mouse_position, &game_state.interceptions, frame_counter);
         self.render_ships(&mut _3d, game_state, cube_z_offset, cube_side_len, &mut cube, p_id);
         self.render_messages(&mut _3d, game_state, cube_z_offset, &mut cube, p_id);
         self.render_bounties(&mut _3d, &game_state.bounties, frame_counter);

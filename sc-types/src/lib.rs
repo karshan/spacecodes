@@ -142,6 +142,13 @@ pub struct Bounty {
 }
 
 #[derive(Clone)]
+pub struct Interception {
+    pub start_frame: i32,
+    pub pos: Vector2,
+    pub player_id: usize,
+}
+
+#[derive(Clone)]
 pub struct GameState {
     pub my_units: Vec<Unit>,
     pub other_units: Vec<Unit>,
@@ -159,6 +166,7 @@ pub struct GameState {
     pub bounties: Vec<Bounty>,
     pub last_bounty: HashMap<BountyEnum, i32>,
     pub spawn_bounties: bool,
+    pub interceptions: Vec<Interception>,
 }
 
 impl GameState {
@@ -182,6 +190,7 @@ impl GameState {
                 (BountyEnum::Gold, 0),
                 (BountyEnum::Lumber, 0)
             ]),
+            interceptions: vec![],
             spawn_cooldown: [0; 2],
         }
     }
