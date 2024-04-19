@@ -17,9 +17,7 @@
  * [P1] Handle low frame_rate
  * [P1] Unit selection rect only needs to intersect with message
  * Path won't complete if a segment goes through station but end point/turnpoint are not in station
- 
- * [P2] Resolution/fullscreen control. commandline flag or menu
- 
+  
  * [P2] Show text error message if trying to intercept without enough gold/too close to enemy unit
  * [P2] Give an indication when not enough lumber for path
 
@@ -44,6 +42,7 @@
  * Consider adding "undo last path point"
 
 #Hygiene
+ * restructure main()
  * Add probability sampling util functions and use them in add_bounty
  * Use bounty_enum::len() in add_bounty()
  * game_state.{my_units, other_units} -> game_state.units: [Vec<Unit>; 2]

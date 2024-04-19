@@ -512,7 +512,9 @@ impl Renderer {
 
         // PERF put this inside frame_load_constants so it only happens every frame in debug builds
         let cube_side_len = self.cs.get_f32("cube_size");
+        let cube_z_offset = self.cs.get_f32("cube_z_offset");
         let cube_size = Vector3::new(cube_side_len, cube_side_len, cube_side_len);
+        self.shader.set_shader_value(self.locs.cube_size, cube_size);
         let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, cube_size.x, cube_size.y, cube_size.z).make_weak() }).unwrap();
         cube.materials_mut()[0].shader = self.shader.clone();
 
@@ -525,16 +527,8 @@ impl Renderer {
         _3d.set_matrix_modelview(&thread, Renderer::iso_proj(screen_width, screen_height, zoom));
 
         self.render_map(&mut _3d, mouse_position, &interceptions, frame_counter);
-
-        let cube_side_len = self.cs.get_f32("cube_size");
-        let cube_size = Vector3::new(cube_side_len, cube_side_len, cube_side_len);
-        self.shader.set_shader_value(self.locs.cube_size, cube_size);
-        let cube_z_offset = self.cs.get_f32("cube_z_offset");
-
         self.render_ships(&mut _3d, game_state, cube_z_offset, cube_side_len, &mut cube, p_id);
-
         self.render_messages(&mut _3d, game_state, cube_z_offset, &mut cube, p_id);
-
         self.render_bounties(&mut _3d, &game_state.bounties, frame_counter);
 
         if let MouseState::Path(path, y_first) = mouse_state {

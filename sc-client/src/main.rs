@@ -373,6 +373,7 @@ fn set_non_fullscreen_window_size(rl: &mut RaylibHandle) {
     } else {
         rl.set_window_size(640, 360);
     }
+    rl.set_window_position(mon_width/8, mon_height/8);
 }
 
 pub enum MouseState {
