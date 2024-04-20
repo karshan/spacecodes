@@ -42,6 +42,12 @@ pub fn handle_handshake(state: ClientState, socket: &UdpSocket, server: &Vec<std
     }
 }
 
+pub enum NetProcessResult {
+    WouldBlock,
+    PeerDisconnect,
+    Success(Vec<GameCommand>, Vec<GameCommand>)
+}
+
 pub static MAX_PKT_QUEUE: usize = 40;
 pub struct NetState {
     pub next_send_frame: i32,
@@ -86,7 +92,7 @@ impl NetState {
     }
 
     pub fn process(self: &mut Self, frame_counter: i32, socket: &UdpSocket, server: &Vec<std::net::SocketAddr>, seq_state: &mut SeqState, frame_rate: u32) 
-        -> Option<(Vec<GameCommand>, Vec<GameCommand>)> {
+        -> NetProcessResult {
         let resp = socket_recv(&socket, &server[0], seq_state);
         match resp {
             None => {}
@@ -96,6 +102,9 @@ impl NetState {
                 self.future_pkts.merge(&updates.clone());
                 self.unacked_pkts.retain(|ps| ps.0 > frame_ack);
                 self.last_rcvd_pkt = frame;
+            },
+            Some(ServerEnum::PeerDisconnect) => {
+                return NetProcessResult::PeerDisconnect;
             },
             Some(_) => {
                 panic!("Expected UpdateOtherTarget")
@@ -144,9 +153,9 @@ impl NetState {
             let sent_pkt = self.sent_pkts.iter().find(|ps| ps.0 == frame_counter).unwrap().1.clone();
             self.future_pkts.retain(|ps| ps.0 > frame_counter);
             self.sent_pkts.retain(|ps| ps.0 > frame_counter);
-            Some((sent_pkt, recvd_pkt))
+            NetProcessResult::Success(sent_pkt, recvd_pkt)
         } else {
-            None
+            NetProcessResult::WouldBlock
         };
 
         let waiting_one_pct_max = f64::min(self.waiting_avg.one_percent_max(), 300f64/1000f64);

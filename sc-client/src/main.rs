@@ -53,7 +53,7 @@ fn main() -> std::io::Result<()> {
     let mut state = ClientState::SendHello;
     // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
     let mut game_state: GameState = GameState::new(0, ChaCha20Rng::from_seed([0; 32]));
-    let mut seq_state: SeqState = Default::default();
+    let mut seq_state = SeqState::new();
     let mut frame_counter: i32 = 0;
     let mut net = NetState::new();
     let mut mouse_state: MouseState = MouseState::None;
@@ -89,7 +89,7 @@ fn main() -> std::io::Result<()> {
             },
             ClientState::Ended(end_state) => {
                 if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
-                    seq_state = Default::default();
+                    seq_state = SeqState::new();
                     ClientState::SendHello
                 } else {
                     ClientState::Ended(end_state)
@@ -101,5 +101,6 @@ fn main() -> std::io::Result<()> {
         render.render(&mut rl, &thread, frame_counter, &game_state, mouse_position, &mouse_state, &state, zoom,
             &NetInfo { game_ps: &game_ps, waiting_avg: &net.waiting_avg, my_frame_delay: net.my_frame_delay }, screen_changed);
     }
+    socket_send(&socket, &server[0], &ClientPkt::Disconnect).unwrap();
     Ok(())
 }

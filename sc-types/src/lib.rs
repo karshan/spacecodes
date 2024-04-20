@@ -13,7 +13,6 @@ use serde_nested_with::serde_nested;
 use shapes::*;
 pub mod constants;
 
-#[derive(Default)]
 pub struct SeqState {
     expected_seq: i32,
     expected_ack: i32,
@@ -22,6 +21,15 @@ pub struct SeqState {
 }
 
 impl SeqState {
+    pub fn new() -> SeqState {
+        SeqState {
+            expected_seq: 0,
+            expected_ack: 0,
+            send_seq: 0,
+            send_ack: 0,
+        }
+    }
+
     pub fn recv(&mut self, seq: i32, ack: i32) -> Option<String> {
         let mut e1 = None;
         let mut e2 = None;
@@ -296,7 +304,8 @@ pub enum ClientPkt {
     Hello { seq: i32, sent_time: f64 },
     Target { seq: i32, ack: i32, updates: VecDeque<(i32, Vec<GameCommand>)>, frame: i32, frame_ack: i32, frame_delay: u8 },
     Ended { seq: i32, ack: i32, frame: i32 },
-    StateHash { seq: i32, ack: i32, hash: u32, frame: i32 }
+    StateHash { seq: i32, ack: i32, hash: u32, frame: i32 },
+    Disconnect,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -311,5 +320,6 @@ pub struct ServerPkt {
 pub enum ServerEnum {
     Welcome { handshake_start_time: f64, player_id: usize },
     Start { rng_seed: [u8; 32] },
-    UpdateOtherTarget { updates: VecDeque<(i32, Vec<GameCommand>)>, frame: i32, frame_ack: i32, frame_delay: u8 }
+    UpdateOtherTarget { updates: VecDeque<(i32, Vec<GameCommand>)>, frame: i32, frame_ack: i32, frame_delay: u8 },
+    PeerDisconnect,
 }

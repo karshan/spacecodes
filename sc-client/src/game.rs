@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::cmp::{min, max};
 use std::net::UdpSocket;
-use crate::net::NetState;
+use crate::net::{NetProcessResult, NetState};
 use raylib::prelude::*;
 use sc_types::*;
 use sc_types::shapes::*;
@@ -548,8 +548,14 @@ pub fn run_game(game_state: &mut GameState, screen_changed: &mut bool, zoom: &mu
         }
     };
 
+    let npr = net.process(*frame_counter, &socket, &server, seq_state, frame_rate);
+
+    if let NetProcessResult::PeerDisconnect = npr {
+        return ClientState::Waiting;
+    }
+
     // TODO use types to make sure sent/recvd packet can't be mistaken for each other
-    if let Some((sent_pkt, recvd_pkt)) = net.process(*frame_counter, &socket, &server, seq_state, frame_rate) {
+    if let NetProcessResult::Success(sent_pkt, recvd_pkt) = npr {
         if game_state.bounties.len() >= 10 {
             game_state.spawn_bounties = false;
         }

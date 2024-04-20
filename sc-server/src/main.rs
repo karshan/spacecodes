@@ -34,12 +34,25 @@ fn main() -> io::Result<()> {
                 },
                 Err(e) => panic!("{:?}", e)
             };
-            conn_states.entry(peer).or_default();
+            conn_states.entry(peer).or_insert((SeqState::new(), None));
 
             match req {
                 ClientPkt::Hello { seq, sent_time } => {
-                    let p_id = conn_states.len() - 1;
-                    let seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
+                    let p_id = if let Some(assigned_p_id) = conn_states.get(&peer).unwrap().1 { 
+                        assigned_p_id
+                    } else if conn_states.len() == 1{
+                        0
+                    } else {
+                        let other = conn_states.iter().find(|(k, _)| *k != &peer).unwrap().1;
+                        if let Some(other_p_id) = other.1 {
+                            (other_p_id + 1) % 2
+                        } else {
+                            0
+                        }
+                    };
+
+                    conn_states.entry(peer).and_modify(|v| v.1 = Some(p_id));
+                    let seq_state = &mut conn_states.get_mut(&peer).expect("Peer not in hashmap").0;
                     seq_state.recv(seq, 0);
                     let server_pkt = ServerPkt {
                         seq: seq_state.send_seq,
@@ -59,11 +72,11 @@ fn main() -> io::Result<()> {
                     }
                 },
                 ClientPkt::Target { seq, ack, updates, frame, frame_ack, frame_delay } => {
-                    let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
+                    let r_seq_state = &mut conn_states.get_mut(&peer).expect("Peer not in hashmap").0;
                     r_seq_state.recv(seq, ack).map(|e| { println!("recvd target err: {}", e); });
                     match state {
                         ServerState::Started => {
-                            for (send_peer, s_seq_state) in conn_states.iter_mut() {
+                            for (send_peer, (s_seq_state, _)) in conn_states.iter_mut() {
                                 if *send_peer != peer {
                                     let server_pkt = ServerPkt {
                                         seq: s_seq_state.send_seq,
@@ -86,7 +99,7 @@ fn main() -> io::Result<()> {
                     }
                 },
                 ClientPkt::Ended { seq, ack, frame: _ } => {
-                    let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
+                    let r_seq_state = &mut conn_states.get_mut(&peer).expect("Peer not in hashmap").0;
                     r_seq_state.recv(seq, ack);
                     match state {
                         ServerState::Started => {
@@ -104,7 +117,7 @@ fn main() -> io::Result<()> {
 
                 },
                 ClientPkt::StateHash { seq, ack, hash, frame } => {
-                    let r_seq_state: &mut SeqState = conn_states.get_mut(&peer).expect("Peer not in hashmap");
+                    let r_seq_state = &mut conn_states.get_mut(&peer).expect("Peer not in hashmap").0;
                     r_seq_state.recv(seq, ack).map(|e| { println!("recvd statehash err: {}", e); });
                     if *state_hashes.entry(frame).or_insert(hash) != hash {
                         println!("Mismatched hashes on frame {}", frame)
@@ -112,6 +125,28 @@ fn main() -> io::Result<()> {
                     if frame >= 10 {
                         state_hashes.remove(&(frame - 10));
                     }
+                },
+                ClientPkt::Disconnect => {
+                    for (send_peer, (s_seq_state, _)) in conn_states.iter_mut() {
+                        if *send_peer != peer {
+                            let server_pkt = ServerPkt {
+                                seq: s_seq_state.send_seq,
+                                ack: s_seq_state.send_ack,
+                                server_time: instant.elapsed().as_secs_f64(),
+                                msg: ServerEnum::PeerDisconnect,
+                            };
+                            match  rmp_serde::encode::to_vec(&server_pkt) {
+                                Ok(buf) => {
+                                    socket.send_to(&buf, send_peer).await?;
+                                    s_seq_state.send();
+                                }
+                                Err(e) => panic!("{:?}", e),
+                            }
+                        }
+                    }
+                    conn_states.remove(&peer);
+                    state_hashes.clear();
+                    state = ServerState::Waiting
                 }
             }
 
@@ -120,7 +155,7 @@ fn main() -> io::Result<()> {
                     if conn_states.len() >= 2 {
                         let rng = ChaCha20Rng::from_entropy();
                         instant = Instant::now();
-                        for (peer, seq_state) in conn_states.iter_mut() {
+                        for (peer, (seq_state, _)) in conn_states.iter_mut() {
                             let server_pkt = ServerPkt {
                                 seq: seq_state.send_seq,
                                 ack: seq_state.send_ack,
