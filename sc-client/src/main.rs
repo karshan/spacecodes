@@ -52,8 +52,7 @@ fn main() -> std::io::Result<()> {
 
     let mut state = ClientState::SendHello;
     // Most of these values doesn't matter. Its just for the compiler. They are initialized in ClientState::Waiting
-    let mut game_state: GameState = GameState::new(ChaCha20Rng::from_seed([0; 32]));
-    let mut p_id = 0usize;
+    let mut game_state: GameState = GameState::new(0, ChaCha20Rng::from_seed([0; 32]));
     let mut seq_state: SeqState = Default::default();
     let mut frame_counter: i32 = 0;
     let mut net = NetState::new();
@@ -74,19 +73,19 @@ fn main() -> std::io::Result<()> {
         let mouse_position = Renderer::screen2world(raw_mouse_position, screen_width, screen_height, zoom);
         let mut screen_changed = false;
 
-        let (m_start_with_seed, new_state) = handle_handshake(state, &socket, &server, &mut seq_state, &mut p_id);
+        let (m_start_with_seed, new_state) = handle_handshake(state, &socket, &server, &mut seq_state, &mut game_state.p_id);
         state = new_state;
         if let Some(rng_seed) = m_start_with_seed {
             frame_counter = 0;
             net = NetState::new();
             mouse_state = MouseState::None;
-            game_state = GameState::new(ChaCha20Rng::from_seed(rng_seed));
+            game_state = GameState::new(game_state.p_id, ChaCha20Rng::from_seed(rng_seed));
         }
     
         state = match state {
             ClientState::Started => {
                 run_game(&mut game_state, &mut screen_changed, &mut zoom, &mut borderless,
-                    &mut rl, p_id, &mut mouse_state, &mut net, &mut frame_counter, &socket, &server, &mut seq_state, frame_rate, &mut game_ps)
+                    &mut rl, &mut mouse_state, &mut net, &mut frame_counter, &socket, &server, &mut seq_state, frame_rate, &mut game_ps)
             },
             ClientState::Ended(end_state) => {
                 if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
@@ -99,7 +98,7 @@ fn main() -> std::io::Result<()> {
             _ => state
         };
 
-        render.render(&mut rl, &thread, frame_counter, p_id, &game_state, mouse_position, &mouse_state, &state, zoom,
+        render.render(&mut rl, &thread, frame_counter, &game_state, mouse_position, &mouse_state, &state, zoom,
             &NetInfo { game_ps: &game_ps, waiting_avg: &net.waiting_avg, my_frame_delay: net.my_frame_delay }, screen_changed);
     }
     Ok(())

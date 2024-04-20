@@ -150,6 +150,7 @@ pub struct Interception {
 
 #[derive(Clone)]
 pub struct GameState {
+    pub p_id: usize,
     pub my_units: Vec<Unit>,
     pub other_units: Vec<Unit>,
     // TODO this should actually be (bool, bool, HashSet<unit_id>)
@@ -171,8 +172,9 @@ pub struct GameState {
 }
 
 impl GameState {
-    pub fn new(rng: ChaCha20Rng) -> GameState {
+    pub fn new(p_id: usize, rng: ChaCha20Rng) -> GameState {
         GameState {
+            p_id,
             my_units: vec![],
             other_units: vec![],
             selection: HashSet::from([Selection::Ship]),

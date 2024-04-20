@@ -478,9 +478,10 @@ impl Renderer {
         }
     }
 
-    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i32, p_id: usize, game_state: &GameState,
+    pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i32, game_state: &GameState,
             mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo, screen_changed: bool) {
         self.frame_load_constants(rl, thread);
+        let p_id = game_state.p_id;
 
         if screen_changed {
             self.sky.resize(rl.get_screen_width(), rl.get_screen_height());

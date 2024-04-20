@@ -358,9 +358,10 @@ pub enum MouseState {
 }
 
 pub fn run_game(game_state: &mut GameState, screen_changed: &mut bool, zoom: &mut bool, borderless: &mut bool,
-    rl: &mut RaylibHandle, p_id: usize, mouse_state: &mut MouseState, net: &mut NetState,
+    rl: &mut RaylibHandle, mouse_state: &mut MouseState, net: &mut NetState,
     frame_counter: &mut i32, socket: &UdpSocket, server: &Vec<std::net::SocketAddr>, seq_state: &mut SeqState, frame_rate: u32,
     game_ps: &mut TimeWindowAvg) -> ClientState {
+    let p_id = game_state.p_id;
     let raw_mouse_position = rl.get_mouse_position();
     let screen_width =  rl.get_screen_width() as f64;
     let screen_height = rl.get_screen_height() as f64;
