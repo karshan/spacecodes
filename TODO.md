@@ -22,6 +22,7 @@
  * [P2] Give an indication when not enough lumber for path
 
  * [P3] Easily playable online
+    * TCP + UDP. UDP only for game input
     * Binary should check version with server on launch
     * Enter lobby code to join game
     * Ready -> 3,2,1

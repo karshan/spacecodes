@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::cmp::{min, max};
-use std::net::UdpSocket;
+use std::net::{SocketAddr, UdpSocket};
 use crate::net::{NetProcessResult, NetState};
 use raylib::prelude::*;
 use sc_types::*;
@@ -359,7 +359,7 @@ pub enum MouseState {
 
 pub fn run_game(game_state: &mut GameState, screen_changed: &mut bool, zoom: &mut bool, borderless: &mut bool,
     rl: &mut RaylibHandle, mouse_state: &mut MouseState, net: &mut NetState,
-    frame_counter: &mut i32, socket: &UdpSocket, server: &Vec<std::net::SocketAddr>, seq_state: &mut SeqState, frame_rate: u32,
+    frame_counter: &mut i32, socket: &UdpSocket, m_server: &Option<SocketAddr>, seq_state: &mut SeqState, frame_rate: u32,
     game_ps: &mut TimeWindowAvg) -> ClientState {
     let p_id = game_state.p_id;
     let raw_mouse_position = rl.get_mouse_position();
@@ -548,7 +548,7 @@ pub fn run_game(game_state: &mut GameState, screen_changed: &mut bool, zoom: &mu
         }
     };
 
-    let npr = net.process(*frame_counter, &socket, &server, seq_state, frame_rate);
+    let npr = net.process(*frame_counter, &socket, &m_server, seq_state, frame_rate);
 
     if let NetProcessResult::PeerDisconnect = npr {
         return ClientState::Waiting;
@@ -575,23 +575,27 @@ pub fn run_game(game_state: &mut GameState, screen_changed: &mut bool, zoom: &mu
         tick(game_state);
         *frame_counter += 1;
         if *frame_counter % 60 == 0 {
-            socket_send(&socket, &server[0], &ClientPkt::StateHash { 
-                seq: seq_state.send_seq,
-                ack: seq_state.send_ack,
-                hash: crc32fast::hash(&serialize_state(&game_state, p_id).unwrap()),
-                frame: *frame_counter,
-            }).unwrap();
-            seq_state.send();
+            if let Some(server) = m_server {
+                socket_send(&socket, server, &ClientPkt::StateHash { 
+                    seq: seq_state.send_seq,
+                    ack: seq_state.send_ack,
+                    hash: crc32fast::hash(&serialize_state(&game_state, p_id).unwrap()),
+                    frame: *frame_counter,
+                }).unwrap();
+                seq_state.send();
+            }
         }
     }
 
     if game_state.fuel.iter().any(|f| *f <= 0) || game_state.intercepted.iter().any(|v| *v >= KILLS_TO_WIN) {
-        socket_send(&socket, &server[0], &ClientPkt::Ended { 
-            seq: seq_state.send_seq,
-            ack: seq_state.send_ack,
-            frame: *frame_counter,
-        }).unwrap();
-        seq_state.send();
+        if let Some(server) = m_server {
+            socket_send(&socket, server, &ClientPkt::Ended { 
+                seq: seq_state.send_seq,
+                ack: seq_state.send_ack,
+                frame: *frame_counter,
+            }).unwrap();
+            seq_state.send();
+        }
 
         if game_state.intercepted.iter().all(|v| *v >= KILLS_TO_WIN) || game_state.fuel.iter().all(|f| *f <= 0) {
             ClientState::Ended(None)
