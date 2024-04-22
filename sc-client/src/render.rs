@@ -436,7 +436,7 @@ impl Renderer {
     fn render_messages(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, game_state: &GameState, cube_z_offset: f32, cube: &mut Model, cube_side_len: f32, p_id: usize) {
         fn draw_message(u: &Unit, cube: &mut Model, cube_z_offset: f32, cube_side_len: f32, r: &Renderer, _3d: &mut RaylibMode3D<RaylibDrawHandle>) {
             let bh = r.cs.get_f32("pack_bounty_height");
-            let ucb = u.carrying_bounty.iter().fold(0.0, |acc, (_, v)| if *v > 0 { acc + 1.0 } else { acc });
+            let ucb = u.carrying_bounty.iter().fold(0.0, |acc, (_, v)| if *v > 0 { acc + 1.0 } else { acc }) + if u.blinking.is_some() { 1.0 } else { 0.0 };
             cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset - (ucb * bh/2.0)) * Matrix::scale(cube_side_len, cube_side_len, cube_side_len - (ucb * bh))));
             _3d.draw_model(&cube, Vector3::zero(), 1.0, r.cs.get_p_color("message_color", u.player_id));
             let mut i = 0;
@@ -448,12 +448,14 @@ impl Renderer {
                     BountyEnum::Lumber => "lumber",
                 };
                 if *n > 0 {
-                    // FIXME this assumes base cube size of _,_,0.5
-                    let cube_size_z = 0.5;
-                    cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset + cube_size_z/2.0 - bh/2.0 - (bh * i as f32)) * Matrix::scale(cube_side_len, cube_side_len, bh)));
+                    cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset + cube_side_len/2.0 - bh/2.0 - (bh * i as f32)) * Matrix::scale(cube_side_len, cube_side_len, bh)));
                     _3d.draw_model(&cube, Vector3::zero(), 1.0, r.cs.get_color(k));
                     i += 1;
                 }
+            }
+            if u.blinking.is_some() {
+                cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset + cube_side_len/2.0 - bh/2.0 - (bh * i as f32)) * Matrix::scale(cube_side_len, cube_side_len, bh)));
+                _3d.draw_model(&cube, Vector3::zero(), 1.0, r.cs.get_color("blink"));
             }
         }
 

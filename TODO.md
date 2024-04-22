@@ -7,13 +7,15 @@
  * More bounties in general. and more bounties as time passes.
 
 #Visuals
-* overlapping messages are visually glitchy
+* [P1] overlapping messages are visually glitchy
+* [P1] Show {message spawn, intercept, blink} spell and cooldown
 * [P1] Path's drawn as rectangle not lines
-* [P1] Show blink being carried by messages
-* [P1] Intercept mine animation
 * [P1] Show lumber cost
 * [P1] Show unit paths when selected
-* [P2] Message death animation (stop and fade out)
+* [P3] Message death animation (stop and fade out)
+* [P3] Better visuals for showing bounties/buffs carried by messages
+* [P3] Intercept mine animation
+
 
 #Features
  * [P1] Handle low frame_rate
