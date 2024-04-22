@@ -449,6 +449,7 @@ impl Renderer {
                 };
                 if *n > 0 {
                     cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset + cube_side_len/2.0 - bh/2.0 - (bh * i as f32)) * Matrix::scale(cube_side_len, cube_side_len, bh)));
+                    // Should probably turn off emission here but this visual not final.
                     _3d.draw_model(&cube, Vector3::zero(), 1.0, r.cs.get_color(k));
                     i += 1;
                 }
@@ -559,22 +560,35 @@ impl Renderer {
         self.render_bounties(&mut _3d, &game_state.bounties, frame_counter);
 
         if let MouseState::Path(path, y_first) = mouse_state {
+            let path_width = 0.5;
+            // FIXME bring_front messes with shadows a tiny bit. can put this inside render_map to avoid hack
+            let bring_front = rvec3(-0.01, -0.01, 0.01);
             let mut p = path[0];
+            let c = self.cs.get_p_color("message_color", p_id);
+            self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", p_id).color_normalize());
+            self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", p_id)));
             for i in 1..path.len() {
                 let next_p = path[i];
-                _3d.draw_line_3D(vec3(p, 0.01), vec3(next_p, 0.01), self.background_color);
+                self.plane.set_transform(&(Matrix::scale((next_p - p).x.abs() + path_width, (next_p - p).y.abs() + path_width, 1.0) * Matrix::rotate_x(PI/2.0)));
+                _3d.draw_model(&self.plane, (vec3(p, 0.0) + vec3(next_p, 0.0)).scale_by(0.5) + bring_front, 1.0, c);
                 p = next_p;
             }
-            let m: Vector3;
+            let m: Vector2;
             if *y_first {
-                m = Vector3::new(p.x.round(), mouse_position.y.round(), 0.01);
+                m = Vector2::new(p.x.round(), mouse_position.y.round());
             } else {
-                m = Vector3::new(mouse_position.x.round(), p.y.round(), 0.01);
+                m = Vector2::new(mouse_position.x.round(), p.y.round());
             }
-            _3d.draw_line_3D(vec3(p, 0.01), m, self.background_color);
-            _3d.draw_line_3D(m, Vector3::new(mouse_position.x.round(), mouse_position.y.round(), 0.01), self.background_color);
+            let next_p = m;
+            self.plane.set_transform(&(Matrix::scale((next_p - p).x.abs() + path_width, (next_p - p).y.abs() + path_width, 1.0) * Matrix::rotate_x(PI/2.0)));
+            _3d.draw_model(&self.plane, (vec3(p, 0.0) + vec3(next_p, 0.0)).scale_by(0.5) + bring_front, 1.0, c);
+            let p = m;
+            let next_p = Vector2::new(mouse_position.x.round(), mouse_position.y.round());
+            self.plane.set_transform(&(Matrix::scale((next_p - p).x.abs() + path_width, (next_p - p).y.abs() + path_width, 1.0) * Matrix::rotate_x(PI/2.0)));
+            _3d.draw_model(&self.plane, (vec3(p, 0.0) + vec3(next_p, 0.0)).scale_by(0.5) + bring_front, 1.0, c);
         }
         if let MouseState::Intercept = mouse_state {
+            // FIXME bring_front messes with shadows a tiny bit. can put this inside render_map to avoid hack
             let bring_front = rvec3(-0.01, -0.01, 0.01);
             let c = self.cs.get_p_color("message_color", p_id);
             self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", p_id).color_normalize());
