@@ -408,14 +408,14 @@ impl Renderer {
 
         let alpha = |i| { (MSG_COOLDOWN - game_state.spawn_cooldown[i]) as f32/MSG_COOLDOWN as f32 };
         self.shader.set_shader_value_v(self.locs.gcube_pos, &[vec3(*ship(0), cube_z_offset), vec3(*ship(1), cube_z_offset)]);
-        self.shader.set_shader_value_v(self.locs.gcube_size, &[alpha(0), alpha(1)]);
+        self.shader.set_shader_value_v(self.locs.gcube_size, &[alpha(0) * cube_side_len, alpha(1) * cube_side_len]);
 
-        cube.set_transform(&Matrix::scale(alpha(0), alpha(0), alpha(0)));
+        cube.set_transform(&Matrix::scale(alpha(0) * cube_side_len, alpha(0) * cube_side_len, alpha(0) * cube_side_len));
         _3d.draw_model(&cube, vec3(*ship(0), cube_z_offset), 1.0, self.cs.get_p_color("message_color", 0));
 
         self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32("message_e_power1"));
         self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", 1).color_normalize());
-        cube.set_transform(&Matrix::scale(alpha(1), alpha(1), alpha(1)));
+        cube.set_transform(&Matrix::scale(alpha(1) * cube_side_len, alpha(1) * cube_side_len, alpha(1) * cube_side_len));
         _3d.draw_model(&cube, vec3(*ship(1), cube_z_offset), 1.0, self.cs.get_p_color("message_color", 1));
     
         self.shader.set_shader_value(self.locs.emissive_power, 0f32);
@@ -433,7 +433,30 @@ impl Renderer {
         update_light(&mut self.shader, &self.lights[0]);
     }
 
-    fn render_messages(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, game_state: &GameState, cube_z_offset: f32, cube: &mut Model, p_id: usize) {
+    fn render_messages(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, game_state: &GameState, cube_z_offset: f32, cube: &mut Model, cube_side_len: f32, p_id: usize) {
+        fn draw_message(u: &Unit, cube: &mut Model, cube_z_offset: f32, cube_side_len: f32, r: &Renderer, _3d: &mut RaylibMode3D<RaylibDrawHandle>) {
+            let bh = r.cs.get_f32("pack_bounty_height");
+            let ucb = u.carrying_bounty.iter().fold(0.0, |acc, (_, v)| if *v > 0 { acc + 1.0 } else { acc });
+            cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset - (ucb * bh/2.0)) * Matrix::scale(cube_side_len, cube_side_len, cube_side_len - (ucb * bh))));
+            _3d.draw_model(&cube, Vector3::zero(), 1.0, r.cs.get_p_color("message_color", u.player_id));
+            let mut i = 0;
+            for (b, n) in u.carrying_bounty.iter() {
+                let k = match b {
+                    BountyEnum::Blink => "blink",
+                    BountyEnum::Fuel => "fuel",
+                    BountyEnum::Gold => "gold",
+                    BountyEnum::Lumber => "lumber",
+                };
+                if *n > 0 {
+                    // FIXME this assumes base cube size of _,_,0.5
+                    let cube_size_z = 0.5;
+                    cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset + cube_size_z/2.0 - bh/2.0 - (bh * i as f32)) * Matrix::scale(cube_side_len, cube_side_len, bh)));
+                    _3d.draw_model(&cube, Vector3::zero(), 1.0, r.cs.get_color(k));
+                    i += 1;
+                }
+            }
+        }
+
         let other_id = (p_id + 1) % 2;
 
         let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, cube_z_offset)).collect::<Vec<Vector3>>();
@@ -446,12 +469,12 @@ impl Renderer {
         self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", p_id)));
         self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", p_id).color_normalize());
         for u in game_state.my_units.iter() {
-            _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, self.cs.get_p_color("message_color", u.player_id));
+            draw_message(u, cube, cube_z_offset, cube_side_len, self, _3d);
         }
         self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", other_id)));
         self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", other_id).color_normalize());
         for u in game_state.other_units.iter() {
-            _3d.draw_model(&cube, vec3(u.pos, cube_z_offset), 1.0, self.cs.get_p_color("message_color", u.player_id));
+            draw_message(u, cube, cube_z_offset, cube_side_len, self, _3d);
         }
 
         self.shader.set_shader_value(self.locs.emissive_power, 0f32);
@@ -517,7 +540,7 @@ impl Renderer {
         let cube_z_offset = self.cs.get_f32("cube_z_offset");
         let cube_size = Vector3::new(cube_side_len, cube_side_len, cube_side_len);
         self.shader.set_shader_value(self.locs.cube_size, cube_size);
-        let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, cube_size.x, cube_size.y, cube_size.z).make_weak() }).unwrap();
+        let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, 1.0, 1.0, 1.0).make_weak() }).unwrap();
         cube.materials_mut()[0].shader = self.shader.clone();
 
         let mut _d = rl.begin_drawing(&thread);        
@@ -530,7 +553,7 @@ impl Renderer {
 
         self.render_map(&mut _3d, mouse_position, &game_state.interceptions, frame_counter);
         self.render_ships(&mut _3d, game_state, cube_z_offset, cube_side_len, &mut cube, p_id);
-        self.render_messages(&mut _3d, game_state, cube_z_offset, &mut cube, p_id);
+        self.render_messages(&mut _3d, game_state, cube_z_offset, &mut cube, cube_side_len, p_id);
         self.render_bounties(&mut _3d, &game_state.bounties, frame_counter);
 
         if let MouseState::Path(path, y_first) = mouse_state {

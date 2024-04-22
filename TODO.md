@@ -4,11 +4,12 @@
     * 10 kills to win. or 10 kills gets you some upgrade.
     * More fuel loss
     * Less fuel gain from fuel bounty
+ * More bounties in general. and more bounties as time passes.
 
 #Visuals
 * overlapping messages are visually glitchy
 * [P1] Path's drawn as rectangle not lines
-* [P1] Show bounties being carried by messages
+* [P1] Show blink being carried by messages
 * [P1] Intercept mine animation
 * [P1] Show lumber cost
 * [P1] Show unit paths when selected
@@ -58,7 +59,8 @@
  * Remove unit.dead, use a to_kill: Vec<unit_id> whenever units can die and update them immediately
 
 #Performance
- * profiling
+ * render shadows in a separate pass
+ * profiling (flamegraph + dtrace)
  * No/minumum heap use
  * Packed bools and structs
  * maximise cache utilization, iterate through units just once per frame
