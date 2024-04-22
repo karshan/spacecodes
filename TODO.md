@@ -6,6 +6,7 @@
     * Less fuel gain from fuel bounty
 
 #Visuals
+* overlapping messages are visually glitchy
 * [P1] Path's drawn as rectangle not lines
 * [P1] Show bounties being carried by messages
 * [P1] Intercept mine animation

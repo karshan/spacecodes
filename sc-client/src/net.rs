@@ -168,7 +168,7 @@ impl NetState {
 
         let waiting_one_pct_max = f64::min(self.waiting_avg.one_percent_max(), 300f64/1000f64);
         if self.m_new_frame_delay.is_none() {
-            let new_delay = (waiting_one_pct_max * (frame_rate as f64)).ceil() as i32;
+            let new_delay = (waiting_one_pct_max * (frame_rate as f64)).ceil() as i32 + 2;
             let mfd = self.my_frame_delay as i32;
             if new_delay > mfd || new_delay < mfd/2 {
                 self.m_new_frame_delay = Some(new_delay as u8);

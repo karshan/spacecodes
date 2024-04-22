@@ -3,3 +3,4 @@
 *.log
 *.trace
 *.exe
+/prof

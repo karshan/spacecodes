@@ -184,7 +184,7 @@ impl WindowAvg {
         if t2.is_empty() {
             -1f64
         } else {
-            t2.iter().fold(0f64, |acc, e| acc + *e)/(t2.len() as f64)
+            t2[0] // iter().fold(0f64, |acc, e| acc + *e)/(t2.len() as f64)
         }
     }
 }
