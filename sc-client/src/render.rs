@@ -1,4 +1,4 @@
-use std::{collections::HashMap, f32::consts::PI};
+use std::{collections::{HashMap, VecDeque}, f32::consts::PI};
 use raylib::prelude::*;
 use sc_types::*;
 use sc_types::constants::*;
@@ -504,6 +504,23 @@ impl Renderer {
         }
     }
 
+    pub fn render_path(self: &mut Renderer, _3d: &mut RaylibMode3D<RaylibDrawHandle>, path: &VecDeque<Vector2>, p_id: usize) {
+        let path_width = 0.5;
+        // FIXME bring_front messes with shadows a tiny bit. can put this inside render_map to avoid hack
+        let bring_front = rvec3(-0.01, -0.01, 0.01);
+        let c = self.cs.get_p_color("message_color", p_id);
+        self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", p_id).color_normalize());
+        self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", p_id)));
+
+        let mut p = path[0];
+        for i in 1..path.len() {
+            let next_p = path[i];
+            self.plane.set_transform(&(Matrix::scale((next_p - p).x.abs() + path_width, (next_p - p).y.abs() + path_width, 1.0) * Matrix::rotate_x(PI/2.0)));
+            _3d.draw_model(&self.plane, (vec3(p, 0.0) + vec3(next_p, 0.0)).scale_by(0.5) + bring_front, 1.0, c);
+            p = next_p;
+        }
+    }
+
     pub fn render(self: &mut Renderer, rl: &mut RaylibHandle, thread: &RaylibThread, frame_counter: i32, game_state: &GameState,
             mouse_position: Vector3, mouse_state: &MouseState, state: &ClientState, zoom: bool, net_info: &NetInfo, screen_changed: bool) {
         self.frame_load_constants(rl, thread);
@@ -559,33 +576,26 @@ impl Renderer {
         self.render_messages(&mut _3d, game_state, cube_z_offset, &mut cube, cube_side_len, p_id);
         self.render_bounties(&mut _3d, &game_state.bounties, frame_counter);
 
-        if let MouseState::Path(path, y_first) = mouse_state {
-            let path_width = 0.5;
-            // FIXME bring_front messes with shadows a tiny bit. can put this inside render_map to avoid hack
-            let bring_front = rvec3(-0.01, -0.01, 0.01);
-            let mut p = path[0];
-            let c = self.cs.get_p_color("message_color", p_id);
-            self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", p_id).color_normalize());
-            self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", p_id)));
-            for i in 1..path.len() {
-                let next_p = path[i];
-                self.plane.set_transform(&(Matrix::scale((next_p - p).x.abs() + path_width, (next_p - p).y.abs() + path_width, 1.0) * Matrix::rotate_x(PI/2.0)));
-                _3d.draw_model(&self.plane, (vec3(p, 0.0) + vec3(next_p, 0.0)).scale_by(0.5) + bring_front, 1.0, c);
-                p = next_p;
+        for s in game_state.selection.iter() {
+            if let Selection::Unit(u_id) = s {
+                let mut tmp_path = game_state.my_units[*u_id].path.clone();
+                tmp_path.push_front(game_state.my_units[*u_id].pos);
+                self.render_path(&mut _3d, &tmp_path, p_id);
             }
+        }
+
+        if let MouseState::Path(path, y_first) = mouse_state {
+            let mut tmp_path = path.clone();
+            let p = path[path.len() - 1];
             let m: Vector2;
             if *y_first {
                 m = Vector2::new(p.x.round(), mouse_position.y.round());
             } else {
                 m = Vector2::new(mouse_position.x.round(), p.y.round());
             }
-            let next_p = m;
-            self.plane.set_transform(&(Matrix::scale((next_p - p).x.abs() + path_width, (next_p - p).y.abs() + path_width, 1.0) * Matrix::rotate_x(PI/2.0)));
-            _3d.draw_model(&self.plane, (vec3(p, 0.0) + vec3(next_p, 0.0)).scale_by(0.5) + bring_front, 1.0, c);
-            let p = m;
-            let next_p = Vector2::new(mouse_position.x.round(), mouse_position.y.round());
-            self.plane.set_transform(&(Matrix::scale((next_p - p).x.abs() + path_width, (next_p - p).y.abs() + path_width, 1.0) * Matrix::rotate_x(PI/2.0)));
-            _3d.draw_model(&self.plane, (vec3(p, 0.0) + vec3(next_p, 0.0)).scale_by(0.5) + bring_front, 1.0, c);
+            tmp_path.push_back(m);
+            tmp_path.push_back(Vector2::new(mouse_position.x.round(), mouse_position.y.round()));
+            self.render_path(&mut _3d, &tmp_path, p_id);
         }
         if let MouseState::Intercept = mouse_state {
             // FIXME bring_front messes with shadows a tiny bit. can put this inside render_map to avoid hack

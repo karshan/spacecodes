@@ -9,7 +9,7 @@
 #Visuals
 * [P1] Show {message spawn, intercept, blink} spell and cooldown
 * [P1] Show lumber cost
-* [P1] Show unit paths when selected
+* [P1] visual fuel indication
 * [P1] overlapping messages are visually glitchy
 * [P3] Message death animation (stop and fade out)
 * [P3] Better visuals for showing bounties/buffs carried by messages
