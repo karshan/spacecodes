@@ -4,7 +4,7 @@ use sc_types::*;
 use sc_types::constants::*;
 use serde_json::Value;
 
-use crate::{rounded, scale_color, vec2, vec3, ClientState, Interception, MouseState, NetInfo};
+use crate::{path_lumber_cost, rounded, scale_color, vec2, vec3, ClientState, Interception, MouseState, NetInfo};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -584,6 +584,7 @@ impl Renderer {
             }
         }
 
+        let mut m_lumber_cost = None;
         if let MouseState::Path(path, y_first) = mouse_state {
             let mut tmp_path = path.clone();
             let p = path[path.len() - 1];
@@ -596,6 +597,7 @@ impl Renderer {
             tmp_path.push_back(m);
             tmp_path.push_back(Vector2::new(mouse_position.x.round(), mouse_position.y.round()));
             self.render_path(&mut _3d, &tmp_path, p_id);
+            m_lumber_cost = Some(path_lumber_cost(&tmp_path));
         }
         if let MouseState::Intercept = mouse_state {
             // FIXME bring_front messes with shadows a tiny bit. can put this inside render_map to avoid hack
@@ -624,6 +626,10 @@ impl Renderer {
         _d.draw_text(&format!("fps/g: {}/{}", fps, net_info.game_ps.get_hz().round()), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
         text_pos += gap;
         _d.draw_text(&format!("w/1%/fd: {}/{}/{}", (net_info.waiting_avg.avg * 1000f64).round(), (net_info.waiting_avg.one_percent_max() * 1000f64).round(), net_info.my_frame_delay), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
+        text_pos += gap;
+        if let Some(lumber_cost) = m_lumber_cost {
+            _d.draw_text(&format!("Cost: {}", lumber_cost), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
+        }
 
         text_pos = Vector2::new(20.0, screen_height as f32) - gap.scale_by(6.0);
         _d.draw_text(&format!("Gold: {}/{}", game_state.gold[p_id].round(), game_state.gold[(p_id + 1) % 2].round()), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);

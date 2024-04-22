@@ -83,7 +83,7 @@ fn apply_updates(game_state: &mut GameState, updates: [&Vec<GameCommand>; 2], p_
                         carrying_bounty: HashMap::new(),
                     });
                     game_state.spawn_cooldown[*player_id] = MSG_COOLDOWN;
-                    game_state.lumber[*player_id] -= max(0, path_lumber_cost(path) - MSG_FREE_LUMBER);
+                    game_state.lumber[*player_id] -= path_lumber_cost(path);
                 },
                 GameCommand::Intercept(InterceptCommand { pos }) => {
                     game_state.interceptions.push(Interception { pos: pos.clone(), start_frame: frame, player_id: i });
@@ -315,18 +315,18 @@ fn collide_bounties(game_state: &mut GameState) {
         !game_state.other_units.iter().any(|u| same_tile(u.pos, b.pos)))
 }
 
-fn path_lumber_cost(path: &VecDeque<Vector2>) -> i32 {
+pub fn path_lumber_cost(path: &VecDeque<Vector2>) -> i32 {
     if path.len() <= 1 {
         0
     } else {
-        path.iter().skip(2).fold((0, path[1], (path[1] - path[0]).normalized()), |(acc, last, dir), e| {
+        max(0, path.iter().skip(2).fold((0, path[1], (path[1] - path[0]).normalized()), |(acc, last, dir), e| {
             let new_dir = (*e - last).normalized();
             if new_dir == dir {
                 (acc, *e, new_dir)
             } else {
                 (acc + 1, *e, new_dir)
             }
-        }).0
+        }).0 - MSG_FREE_LUMBER)
     }
 }
 
@@ -510,7 +510,7 @@ pub fn run_game(game_state: &mut GameState, screen_changed: &mut bool, zoom: &mu
                     }
                     if  station(p_id).iter().any(|s| *s == m) ||
                         station(p_id).iter().any(|s| *s == Vector2::new(mouse_position.x.round(), mouse_position.y.round())) {
-                        if game_state.lumber[p_id] >= path_lumber_cost(&path) - MSG_FREE_LUMBER {
+                        if game_state.lumber[p_id] >= path_lumber_cost(&path) {
                             net.queue_command(GameCommand::Spawn(SpawnMsgCommand { player_id: p_id, path: path.clone() }));
                             *mouse_state = MouseState::WaitReleaseLButton;
                         } else {
