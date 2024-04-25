@@ -11,7 +11,7 @@
 * [P1] visual fuel indication
 * [P1] overlapping messages are visually glitchy
 * [P3] Message death animation (stop and fade out)
-* [P3] Better visuals for showing bounties/buffs carried by messages
+* [P3] Animation for bounty orbit capture
 * [P3] Intercept mine animation
 * [P3] Make paths shiny while they are being drawn (move light?)
 * [P3] Show resources and lumber cost in a nice ui

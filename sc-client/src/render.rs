@@ -61,11 +61,23 @@ fn create_light(_type: LightType, position: Vector3, target: Vector3, color: Col
     light
 }
 
+// TODO these assume square images
 fn draw_border(img: &mut Image, c: Color, thickness: i32) {
-    for i in 0..2048 {
+    for i in 0..img.width {
         for j in 0..thickness {
             img.draw_pixel(i, j, c);
             img.draw_pixel(j, i, c);
+        }
+    }
+}
+
+fn draw_4border(img: &mut Image, c: Color, thickness: i32) {
+    for i in 0..img.width {
+        for j in 0..thickness {
+            img.draw_pixel(i, j, c);
+            img.draw_pixel(i, img.width - j - 1, c);
+            img.draw_pixel(j, i, c);
+            img.draw_pixel(img.width - j - 1, i, c);
         }
     }
 }
@@ -148,6 +160,10 @@ pub struct Renderer {
     xtr_sky: Texture2D,
     tile: Image,
     xtr_tile: Texture2D,
+    p0int_tile: Image,
+    xtr_p0int_tile: Texture2D,
+    p1int_tile: Image,
+    xtr_p1int_tile: Texture2D,
     locs: ShaderLocs,
 }
 
@@ -170,6 +186,14 @@ impl Renderer {
         draw_border(&mut self.tile, scale_color(self.cs.get_color("tile_tint"), self.cs.get_f32("tile_border_mult")), self.cs.get_i32("tile_border_thickness"));
         self.xtr_tile = rl.load_texture_from_image(&thread, &mut self.tile).unwrap();
         self.floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &self.xtr_tile);
+
+        self.p0int_tile = Image::gen_image_color(256, 256, self.cs.get_p_color("message_color", 0));
+        draw_4border(&mut self.p0int_tile, self.cs.get_p_color("intercept_border_color", 0), self.cs.get_i32("intercept_border_thickness"));
+        self.xtr_p0int_tile = rl.load_texture_from_image(&thread, &mut self.p0int_tile).unwrap();
+
+        self.p1int_tile = Image::gen_image_color(256, 256, self.cs.get_p_color("message_color", 1));
+        draw_4border(&mut self.p1int_tile, self.cs.get_p_color("intercept_border_color", 1), self.cs.get_i32("intercept_border_thickness"));
+        self.xtr_p1int_tile = rl.load_texture_from_image(&thread, &mut self.p1int_tile).unwrap();
     }
 
     #[cfg(not(debug_assertions))]
@@ -224,11 +248,20 @@ impl Renderer {
         sky.resize(rl.get_screen_width(), rl.get_screen_height());
         let xtr_sky = rl.load_texture_from_image(&thread, &mut sky).unwrap();
 
+        // TODO "tile_tint" -> "tile_color"
         let cs = Renderer::load_constants();
         let mut tile = Image::gen_image_color(256, 256, cs.get_color("tile_tint"));
         draw_border(&mut tile, scale_color(cs.get_color("tile_tint"), cs.get_f32("tile_border_mult")), cs.get_i32("tile_border_thickness"));
         let xtr_tile = rl.load_texture_from_image(&thread, &mut tile).unwrap();
         floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &xtr_tile);
+
+        let mut p0int_tile = Image::gen_image_color(256, 256, cs.get_p_color("message_color", 0));
+        draw_4border(&mut p0int_tile, cs.get_p_color("intercept_border_color", 0), cs.get_i32("intercept_border_thickness"));
+        let xtr_p0int_tile = rl.load_texture_from_image(&thread, &mut p0int_tile).unwrap();
+
+        let mut p1int_tile = Image::gen_image_color(256, 256, cs.get_p_color("message_color", 1));
+        draw_4border(&mut p1int_tile, cs.get_p_color("intercept_border_color", 1), cs.get_i32("intercept_border_thickness"));
+        let xtr_p1int_tile = rl.load_texture_from_image(&thread, &mut p1int_tile).unwrap();
         
         shader.set_shader_value(shader.get_shader_location("useTexNormal"), 0);
         shader.set_shader_value(shader.get_shader_location("useTexMRA"), 0);
@@ -247,6 +280,10 @@ impl Renderer {
             xtr_sky,
             tile,
             xtr_tile,
+            p0int_tile,
+            xtr_p0int_tile,
+            p1int_tile,
+            xtr_p1int_tile,
             locs: ShaderLocs {
                 use_tex_albedo: shader.get_shader_location("useTexAlbedo"),
                 use_tex_emissive: shader.get_shader_location("useTexEmissive"),
@@ -329,6 +366,10 @@ impl Renderer {
     }
 
     pub fn render_map(self: &mut Renderer, _3d: &mut RaylibMode3D<RaylibDrawHandle>, mouse_position: Vector3, interceptions: &Vec<Interception>, frame_counter: i32) {
+        enum Tile {
+            Intercept(Interception),
+            Color(Color, Vector4, f32)
+        }
         let mut tile_color = HashMap::new();
         for i in interceptions {
             let alpha = ((frame_counter - i.start_frame) as f32/INTERCEPT_DELAY as f32).min(1.0);
@@ -337,30 +378,33 @@ impl Renderer {
             let end_ep = self.cs.get_f32(&format!("message_e_power{}", i.player_id));
             let start_ep = self.cs.get_f32("e_power");
             let ep = start_ep + (end_ep - start_ep)*alpha;
-            
+
             tile_color.insert((i.pos.x as i32, i.pos.y as i32), 
-                (Color::color_from_normalized(c),
-                e,
-                ep));
+                Tile::Intercept(*i));
         }
 
         for s in station(0) {
-            tile_color.insert((s.x as i32, s.y as i32), (self.cs.get_p_color("message_color", 0),
+            tile_color.insert((s.x as i32, s.y as i32), Tile::Color(self.cs.get_p_color("message_color", 0),
                 self.cs.get_p_color("message_emission", 0).color_normalize(),
                 self.cs.get_f32(&format!("message_e_power{}", 0))));
         }
 
         for s in station(1) {
-            tile_color.insert((s.x as i32, s.y as i32), (self.cs.get_p_color("message_color", 1),
+            tile_color.insert((s.x as i32, s.y as i32), Tile::Color(self.cs.get_p_color("message_color", 1),
                 self.cs.get_p_color("message_emission", 1).color_normalize(),
                 self.cs.get_f32(&format!("message_e_power{}", 1))));
         }
 
         let rounded_mpos = rounded(vec2(mouse_position));
         if PLAY_AREA.contains_point(&rounded_mpos) {
-            tile_color.entry((rounded_mpos.x as i32, rounded_mpos.y as i32)).and_modify(|e| *e = (scale_color(e.0, self.cs.get_f32("highlight_mult")), e.1, e.2));
+            tile_color.entry((rounded_mpos.x as i32, rounded_mpos.y as i32)).and_modify(|e| 
+                match *e { 
+                    Tile::Color(c, ec, ep) => *e = Tile::Color(scale_color(c, self.cs.get_f32("highlight_mult")), ec, ep),
+                    _ => {}
+                }
+            );
             tile_color.entry((rounded_mpos.x as i32, rounded_mpos.y as i32)).or_insert(
-                (scale_color(self.cs.get_color("tile_tint"), self.cs.get_f32("highlight_mult")), self.cs.get_color("e_color").color_normalize(), self.cs.get_f32("e_power")));
+                Tile::Color(scale_color(self.cs.get_color("tile_tint"), self.cs.get_f32("highlight_mult")), self.cs.get_color("e_color").color_normalize(), self.cs.get_f32("e_power")));
         }
 
         self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32("e_power"));
@@ -371,11 +415,40 @@ impl Renderer {
             for y in -12..=12 {
                 let mut c = Color::WHITE; //self.cs.get_color("tile_tint");
                 let mut reset_emissive = false;
-                if let Some((overwrite_c, e, ep)) = tile_color.get(&(x, y)) {
-                    c = *overwrite_c;
-                    self.shader.set_shader_value(self.locs.emissive_power, *ep);
-                    self.shader.set_shader_value(self.locs.emissive_color, *e);
-                    self.shader.set_shader_value(self.locs.use_tex_albedo, 0);
+                let mut reset_xtr = false;
+                if let Some(t) = tile_color.get(&(x, y)) {
+                    match t {
+                        Tile::Color(overwrite_c, e, ep) => {
+                            c = *overwrite_c;
+                            self.shader.set_shader_value(self.locs.emissive_power, *ep);
+                            self.shader.set_shader_value(self.locs.emissive_color, *e);
+                            self.shader.set_shader_value(self.locs.use_tex_albedo, 0);
+                        }
+                        Tile::Intercept(i) => {
+                            let alpha = ((frame_counter - i.start_frame) as f32/INTERCEPT_DELAY as f32).min(1.0);
+                            if alpha < 1.0 {
+                                c = Color::color_from_normalized(
+                                    self.cs.get_color("tile_tint").color_normalize().lerp(
+                                        self.cs.get_p_color("message_color", i.player_id).color_normalize(), alpha));
+                                let e = self.cs.get_color("e_color").color_normalize().lerp(self.cs.get_p_color("message_emission", i.player_id).color_normalize(), alpha);
+                                let end_ep = self.cs.get_f32(&format!("message_e_power{}", i.player_id));
+                                let start_ep = self.cs.get_f32("e_power");
+                                let ep = start_ep + (end_ep - start_ep)*alpha;
+                                self.shader.set_shader_value(self.locs.emissive_color, e);
+                                self.shader.set_shader_value(self.locs.emissive_power, ep);
+                                self.shader.set_shader_value(self.locs.use_tex_albedo, 0);
+                            } else {
+                                self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", i.player_id).color_normalize());
+                                self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", i.player_id)));
+                                if i.player_id == 0 {
+                                    self.floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &self.xtr_p0int_tile);
+                                } else {
+                                    self.floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &self.xtr_p1int_tile);
+                                }
+                                reset_xtr = true;
+                            }
+                        }
+                    }
                     reset_emissive = true;
                 }
                 self.floor.set_transform(&(Matrix::translate(x as f32, y as f32, 0.0) * Matrix::rotate_x(PI/2.0)));
@@ -385,6 +458,10 @@ impl Renderer {
                     self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32("e_power"));
                     self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_color("e_color").color_normalize());
                     self.shader.set_shader_value(self.locs.use_tex_albedo, 1);
+                }
+
+                if reset_xtr {
+                    self.floor.materials_mut()[0].set_material_texture(MaterialMapIndex::MATERIAL_MAP_ALBEDO, &self.xtr_tile);
                 }
             }
         }

@@ -149,7 +149,7 @@ pub struct Bounty {
     pub pos: Vector2,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Interception {
     pub start_frame: i32,
     pub pos: Vector2,
