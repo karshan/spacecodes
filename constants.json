@@ -33,7 +33,7 @@
     "pack_bounty_r": 0.75,
     "pack_bounty_speed": 0.05,
     "pack_bounty_z": 0.5,
-    "pack_bounty_phi": 45,
+    "pack_bounty_phi_min": 25,
 
     "light_pos": [-0.75, -0.55, 1],
     "light_color": [1, 1.00, 1],

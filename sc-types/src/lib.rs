@@ -122,7 +122,7 @@ impl BountyEnum {
         }
     }
 
-    pub fn amount(self, _rng: &mut ChaCha20Rng) -> i32 {
+    pub fn amount(self) -> i32 {
         match self {
             BountyEnum::Gold => 50,
             BountyEnum::Fuel => MSG_FUEL * 3,

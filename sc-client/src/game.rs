@@ -285,7 +285,7 @@ fn add_bounty(game_state: &mut GameState) {
                 game_state.bounties.iter().any(|existing_b| same_tile(existing_b.pos, b)) {
             b = Vector2::new(rng.gen_range(PLAY_AREA.x..(PLAY_AREA.x + PLAY_AREA.w)) as f32, rng.gen_range(PLAY_AREA.y..(PLAY_AREA.y + PLAY_AREA.h)) as f32);
         }
-        game_state.bounties.push(Bounty { type_: t_to_spawn, amount: t_to_spawn.amount(rng), pos: b });
+        game_state.bounties.push(Bounty { type_: t_to_spawn, amount: t_to_spawn.amount(), pos: b });
     } 
 }
 

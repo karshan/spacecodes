@@ -438,6 +438,8 @@ impl Renderer {
         fn draw_packed_bounties(u: &Unit, r: &Renderer, _3d: &mut RaylibMode3D<RaylibDrawHandle>, frame_counter: i32) -> Vec<Vector3> {
             let mut i = 0;
             let mut out = vec![];
+            // TODO function for calculating number of bounties num_bounties(BountyEnum, amount: i32) -> i32
+            let tot_carried_bounties = u.carrying_bounty.iter().fold(0, |acc, (b, n)| acc + if *b == BountyEnum::Blink { 1 } else { *n/b.amount() });
             for (b, n) in u.carrying_bounty.iter() {
                 let k = match b {
                     BountyEnum::Blink => "blink",
@@ -445,16 +447,25 @@ impl Renderer {
                     BountyEnum::Gold => "gold",
                     BountyEnum::Lumber => "lumber",
                 };
-                if *n > 0 {
-                    let pbr = r.cs.get_f32("pack_bounty_r");
-                    let pbs = r.cs.get_f32("pack_bounty_speed");
-                    let pbz = r.cs.get_f32("pack_bounty_z");
-                    let phi = i as f32 * r.cs.get_f32("pack_bounty_phi").to_radians();
+                let pbr = r.cs.get_f32("pack_bounty_r");
+                let pbs = r.cs.get_f32("pack_bounty_speed");
+                let pbz = r.cs.get_f32("pack_bounty_z");
+                let mut b_amount = *n;
+                while b_amount > 0 {  
+                    let phi = i as f32 * r.cs.get_f32("pack_bounty_phi_min").to_radians().max(2.0 * PI / tot_carried_bounties as f32);
+                    if phi >= 2.0 * PI {
+                        break;
+                    }
                     let p = Vector3::new(u.pos.x + pbr * (frame_counter as f32 * pbs + phi).sin(), u.pos.y + pbr * (frame_counter as f32 * pbs + phi).cos(), pbz);
                     _3d.draw_model(&r.sphere, p,
                         r.cs.get_f32("bounty_r"), r.cs.get_color(k));
                     out.push(p);
                     i += 1;
+                    if *b == BountyEnum::Blink {
+                        b_amount = 0;
+                    } else {
+                        b_amount -= b.amount();
+                    }
                 }
             }
             out
