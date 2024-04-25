@@ -28,8 +28,8 @@
     "selection": "00ff00",
     "selection_thickness": 0.1,
 
-    "intercept_border_color": ["ff0000", "ff00ff"],
-    "intercept_border_thickness": 16,
+    "intercept_border_color": ["03045e", "c1121f"],
+    "intercept_border_thickness": 128,
 
     "cube_size": 0.5,
     "cube_z_offset": 0.5,
