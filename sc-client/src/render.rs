@@ -433,13 +433,11 @@ impl Renderer {
         update_light(&mut self.shader, &self.lights[0]);
     }
 
-    fn render_messages(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, game_state: &GameState, cube_z_offset: f32, cube: &mut Model, cube_side_len: f32, p_id: usize) {
-        fn draw_message(u: &Unit, cube: &mut Model, cube_z_offset: f32, cube_side_len: f32, r: &Renderer, _3d: &mut RaylibMode3D<RaylibDrawHandle>) {
-            let bh = r.cs.get_f32("pack_bounty_height");
-            let ucb = u.carrying_bounty.iter().fold(0.0, |acc, (_, v)| if *v > 0 { acc + 1.0 } else { acc }) + if u.blinking.is_some() { 1.0 } else { 0.0 };
-            cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset - (ucb * bh/2.0)) * Matrix::scale(cube_side_len, cube_side_len, cube_side_len - (ucb * bh))));
-            _3d.draw_model(&cube, Vector3::zero(), 1.0, r.cs.get_p_color("message_color", u.player_id));
+    // Returns positions of packed bounties to be sent to frag shader for shadows
+    fn render_messages(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, game_state: &GameState, cube_z_offset: f32, cube: &mut Model, cube_side_len: f32, p_id: usize, frame_counter: i32) -> Vec<Vector3> {
+        fn draw_packed_bounties(u: &Unit, r: &Renderer, _3d: &mut RaylibMode3D<RaylibDrawHandle>, frame_counter: i32) -> Vec<Vector3> {
             let mut i = 0;
+            let mut out = vec![];
             for (b, n) in u.carrying_bounty.iter() {
                 let k = match b {
                     BountyEnum::Blink => "blink",
@@ -448,18 +446,21 @@ impl Renderer {
                     BountyEnum::Lumber => "lumber",
                 };
                 if *n > 0 {
-                    cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset + cube_side_len/2.0 - bh/2.0 - (bh * i as f32)) * Matrix::scale(cube_side_len, cube_side_len, bh)));
-                    // Should probably turn off emission here but this visual not final.
-                    _3d.draw_model(&cube, Vector3::zero(), 1.0, r.cs.get_color(k));
+                    let pbr = r.cs.get_f32("pack_bounty_r");
+                    let pbs = r.cs.get_f32("pack_bounty_speed");
+                    let pbz = r.cs.get_f32("pack_bounty_z");
+                    let phi = i as f32 * r.cs.get_f32("pack_bounty_phi").to_radians();
+                    let p = Vector3::new(u.pos.x + pbr * (frame_counter as f32 * pbs + phi).sin(), u.pos.y + pbr * (frame_counter as f32 * pbs + phi).cos(), pbz);
+                    _3d.draw_model(&r.sphere, p,
+                        r.cs.get_f32("bounty_r"), r.cs.get_color(k));
+                    out.push(p);
                     i += 1;
                 }
             }
-            if u.blinking.is_some() {
-                cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset + cube_side_len/2.0 - bh/2.0 - (bh * i as f32)) * Matrix::scale(cube_side_len, cube_side_len, bh)));
-                _3d.draw_model(&cube, Vector3::zero(), 1.0, r.cs.get_color("blink"));
-            }
+            out
         }
 
+        let mut packed_b_pos = vec![];
         let other_id = (p_id + 1) % 2;
 
         let cubes = game_state.my_units.iter().chain(game_state.other_units.iter()).map(|u| vec3(u.pos, cube_z_offset)).collect::<Vec<Vector3>>();
@@ -472,23 +473,37 @@ impl Renderer {
         self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", p_id)));
         self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", p_id).color_normalize());
         for u in game_state.my_units.iter() {
-            draw_message(u, cube, cube_z_offset, cube_side_len, self, _3d);
+            cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset) * Matrix::scale(cube_side_len, cube_side_len, cube_side_len)));
+            _3d.draw_model(&cube, Vector3::zero(), 1.0, self.cs.get_p_color("message_color", u.player_id));
         }
+
+        self.shader.set_shader_value(self.locs.emissive_power, 0.0);
+        for u in game_state.my_units.iter() {
+            packed_b_pos.append(&mut draw_packed_bounties(u, self, _3d, frame_counter));
+        }
+
         self.shader.set_shader_value(self.locs.emissive_power, self.cs.get_f32(&format!("message_e_power{}", other_id)));
         self.shader.set_shader_value(self.locs.emissive_color, self.cs.get_p_color("message_emission", other_id).color_normalize());
         for u in game_state.other_units.iter() {
-            draw_message(u, cube, cube_z_offset, cube_side_len, self, _3d);
+            cube.set_transform(&(Matrix::translate(u.pos.x, u.pos.y, cube_z_offset) * Matrix::scale(cube_side_len, cube_side_len, cube_side_len)));
+            _3d.draw_model(&cube, Vector3::zero(), 1.0, self.cs.get_p_color("message_color", u.player_id));
+        }
+
+        self.shader.set_shader_value(self.locs.emissive_power, 0.0);
+        for u in game_state.other_units.iter() {
+            packed_b_pos.append(&mut draw_packed_bounties(u, self, _3d, frame_counter));
         }
 
         self.shader.set_shader_value(self.locs.emissive_power, 0f32);
-
+        packed_b_pos
     }
 
-    fn render_bounties(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, bounties: &Vec<Bounty>, frame_counter: i32) {
+    fn render_bounties(self: &mut Self, _3d: &mut RaylibMode3D<RaylibDrawHandle>, bounties: &Vec<Bounty>, frame_counter: i32, packed_b_pos: Vec<Vector3>) {
         let bounty_z = self.cs.get_f32("bounty_z") + self.cs.get_f32("bounty_hover_d") * ((frame_counter as f32/60f32) * self.cs.get_f32("bounty_hover_s")).sin();
-        if bounties.len() <= 10 {
-            self.shader.set_shader_value_v(self.locs.bounty_pos, bounties.iter().map(|b| vec3(b.pos, bounty_z)).collect::<Vec<_>>().as_slice());
-            self.shader.set_shader_value(self.locs.num_bounties, bounties.len() as i32);
+        let num_bounty_spheres = bounties.len() + packed_b_pos.len();
+        if num_bounty_spheres <= 20 {
+            self.shader.set_shader_value_v(self.locs.bounty_pos, bounties.iter().map(|b| vec3(b.pos, bounty_z)).chain(packed_b_pos).collect::<Vec<_>>().as_slice());
+            self.shader.set_shader_value(self.locs.num_bounties, num_bounty_spheres as i32);
             self.shader.set_shader_value(self.locs.bounty_r, self.cs.get_f32("bounty_r"));
         } else {
             self.shader.set_shader_value(self.locs.num_bounties, 0);
@@ -573,8 +588,8 @@ impl Renderer {
 
         self.render_map(&mut _3d, mouse_position, &game_state.interceptions, frame_counter);
         self.render_ships(&mut _3d, game_state, cube_z_offset, cube_side_len, &mut cube, p_id);
-        self.render_messages(&mut _3d, game_state, cube_z_offset, &mut cube, cube_side_len, p_id);
-        self.render_bounties(&mut _3d, &game_state.bounties, frame_counter);
+        let packed_b_pos = self.render_messages(&mut _3d, game_state, cube_z_offset, &mut cube, cube_side_len, p_id, frame_counter);
+        self.render_bounties(&mut _3d, &game_state.bounties, frame_counter, packed_b_pos);
 
         for s in game_state.selection.iter() {
             if let Selection::Unit(u_id) = s {

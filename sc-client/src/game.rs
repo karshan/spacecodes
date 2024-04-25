@@ -297,9 +297,8 @@ fn collide_bounties(game_state: &mut GameState) {
                 if unit.blinking.is_none() {
                     unit.blinking = Some(false);
                 }
-            } else {
-                unit.carrying_bounty.entry(b.type_).and_modify(|e| *e += b.amount).or_insert(b.amount);
             }
+            unit.carrying_bounty.entry(b.type_).and_modify(|e| *e += b.amount).or_insert(b.amount);
         } 
     };
 

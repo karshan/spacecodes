@@ -127,7 +127,7 @@ impl BountyEnum {
             BountyEnum::Gold => 50,
             BountyEnum::Fuel => MSG_FUEL * 3,
             BountyEnum::Lumber => 20,
-            BountyEnum::Blink => 0
+            BountyEnum::Blink => 1
         }
     }
 

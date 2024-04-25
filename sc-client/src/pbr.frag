@@ -54,7 +54,7 @@ uniform int numCubes;
 uniform vec3 gcubePos[2];
 uniform float gcubeSize[2];
 
-uniform vec3 bountyPos[10];
+uniform vec3 bountyPos[20];
 uniform float bountyR;
 uniform int numBounties;
 
