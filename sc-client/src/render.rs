@@ -666,6 +666,8 @@ impl Renderer {
         let mut cube = rl.load_model_from_mesh(&thread, unsafe { Mesh::gen_mesh_cube(&thread, 1.0, 1.0, 1.0).make_weak() }).unwrap();
         cube.materials_mut()[0].shader = self.shader.clone();
 
+        rl.set_text_line_spacing(0);
+        let default_font = rl.get_font_default();
         let mut _d = rl.begin_drawing(&thread);        
         _d.clear_background(self.background_color);
         _d.draw_texture(&self.xtr_sky, 0, 0, Color::WHITE);
@@ -720,9 +722,11 @@ impl Renderer {
             _d.draw_rectangle_lines(selection_pos.x as i32, selection_pos.y as i32, selection_size.x as i32, selection_size.y as i32, Color::from_hex("00ff00").unwrap());
         }
 
-        let text_size = screen_height as f32/50.0;
-        let gap = Vector2::new(0.0, text_size + 10.0);
-        let mut text_pos = Vector2::new(20.0, 0.0) + gap;
+        let sh = screen_height as f32;
+        // raylib enforces minimum fontsize of 10 for the default font
+        let text_size = (sh as f32/50.0).max(10.0);
+        let gap = Vector2::new(0.0, text_size);
+        let mut text_pos = Vector2::new(sh/50.0, 0.0) + gap;
 
         _d.draw_text(&format!("{:?}", state), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
         text_pos += gap;
@@ -734,14 +738,25 @@ impl Renderer {
             _d.draw_text(&format!("Cost: {}", lumber_cost), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
         }
 
-        text_pos = Vector2::new(20.0, screen_height as f32) - gap.scale_by(6.0);
-        _d.draw_text(&format!("Gold: {}/{}", game_state.gold[p_id].round(), game_state.gold[(p_id + 1) % 2].round()), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
-        text_pos += gap;
-        _d.draw_text(&format!("Lumber: {}/{}", game_state.lumber[p_id], game_state.lumber[(p_id + 1) % 2]), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
-        text_pos += gap;
-        _d.draw_text(&format!("Fuel: {}/{}", (game_state.fuel[p_id] * 100)/START_FUEL, (game_state.fuel[(p_id + 1) % 2] * 100)/START_FUEL), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
-        text_pos += gap;
-        _d.draw_text(&format!("K/D: {}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]), text_pos.x.round() as i32, text_pos.y.round() as i32, text_size.round() as i32, Color::WHITE);
+        text_pos = Vector2::new(sh/50.0, screen_height as f32) - gap.scale_by(6.0);
+
+        let mut ui_text = vec![];
+        ui_text.push(format!("Gold: {}/{}", game_state.gold[p_id].round(), game_state.gold[(p_id + 1) % 2].round()));
+        ui_text.push(format!("Lumber: {}/{}", game_state.lumber[p_id], game_state.lumber[(p_id + 1) % 2]));
+        ui_text.push(format!("Fuel: {}/{}", (game_state.fuel[p_id] * 100)/START_FUEL, (game_state.fuel[(p_id + 1) % 2] * 100)/START_FUEL));
+        ui_text.push(format!("K/D: {}/{}", game_state.intercepted[p_id], game_state.intercepted[(p_id + 1) % 2]));
+        let mut max_width = ui_text.iter().fold(0f32, |acc, s| acc.max(default_font.measure_text(s, text_size, text_size/10.0).x));
+
+        max_width += text_pos.x + sh/100.0;
+        let pad_y = sh/100.0;
+        let neg_x_off = 20.0;
+        _d.draw_rectangle_rounded(Rectangle { x: -neg_x_off, y: text_pos.y - pad_y, width: max_width + neg_x_off, height: gap.scale_by(4.0).y + pad_y * 2.0 },
+            0.1, 10, Color::BLACK.alpha(0.5));
+
+        for s in ui_text {
+            _d.draw_text(&s, text_pos.x as i32, text_pos.y as i32, text_size as i32, Color::WHITE);
+            text_pos += gap;
+        }
     }
 }
 
