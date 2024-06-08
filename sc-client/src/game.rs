@@ -320,8 +320,8 @@ pub fn path_lumber_cost(path: &VecDeque<Vector2>) -> i32 {
     } else {
         max(0, path.iter().skip(2).fold((0, path[1], (path[1] - path[0]).normalized()), |(acc, last, dir), e| {
             let new_dir = (*e - last).normalized();
-            if new_dir == dir {
-                (acc, *e, new_dir)
+            if new_dir == dir || new_dir == Vector2::zero() {
+                (acc, *e, dir)
             } else {
                 (acc + 1, *e, new_dir)
             }
